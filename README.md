@@ -10,13 +10,14 @@ $ pip install -e "."
 
 ## Example transformations / invariant coding
 * Method extraction (always runs first)
-* Subsampling inputs (analagous to cropping an image), 1D or 2D
-* Variable renaming to a unique identifier
-* Clojure compiler transformations for DCE, variable declaration hoisting, etc.
+* **Subsampling inputs (analagous to cropping an image), 1D or 2D**
+* **Variable renaming to a unique identifier**
+* **Clojure compiler transformations for DCE, variable declaration hoisting, etc.**
 * const <-> var conversion
-* noop insertion, e.g. add a `console.log(<RANDOMSTRING>)` or a comment
+* **noop insertion, e.g. add a variable declaration, `console.log(<RANDOMSTRING>)` or a comment**
 * type masking
-* ast subtree masking
+* **ast subtree masking**
+* local line reordering
 * remove comments, `console.log`, etc.
 * convert for-loops to while-loops
 * for-loop unrolling
