@@ -1,0 +1,15 @@
+{
+  "name": "parse_js_ast",
+  "version": "1.0.0",
+  "description": "",
+  "main": "parse_javascript.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "acorn-loose": "^7.0.0"
+  }
+}
