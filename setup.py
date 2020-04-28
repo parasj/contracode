@@ -15,4 +15,6 @@ setup(
         "seaborn",
         "pyjsparser",
         "graphviz"
-    ])
+    ],
+    extras_require={"test": ["pytest"]}
+)

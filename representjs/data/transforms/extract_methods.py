@@ -1,13 +1,11 @@
-from pprint import pprint
+import json
 from typing import List
 
-import representjs
+from representjs.data.transforms.util import dispatch_to_node
 
 
 def extract_methods(js: str) -> List[str]:
-    methods = []
-    return methods
-
-if __name__ == "__main__":
-    js_src = (representjs.PACKAGE_ROOT / "data" / "test_js" / "mergesort.js").read_text()
-    pprint(js_ast)
+    stdout, stderr = dispatch_to_node('extract_methods.js', js)
+    result = json.loads(stdout)
+    assert isinstance(result, list)
+    return result
