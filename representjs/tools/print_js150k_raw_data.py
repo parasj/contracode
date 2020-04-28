@@ -1,7 +1,9 @@
+import json
 from pprint import pprint
 
 from representjs.data.js150k import JS150kDataset
 import pyjsparser
+
 
 def main():
     js150k = JS150kDataset()
@@ -10,7 +12,7 @@ def main():
         print(row['path'])
         print(row['js'])
         js_ast = pyjsparser.parse(row['js'])
-        pprint(js_ast)
+        print(json.dumps(js_ast))
 
 
 if __name__ == "__main__":

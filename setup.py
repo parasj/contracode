@@ -13,5 +13,6 @@ setup(
         "pandas",
         "matplotlib",
         "seaborn",
-        "pyjsparser"
+        "pyjsparser",
+        "graphviz"
     ])
