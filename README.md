@@ -22,3 +22,9 @@ $ pip install -e "."
 * for-loop unrolling
 * prepack.io precomputation
 * function declared through variable <-> direct function declaration
+* ~Coffeescript compiler / decaffienate~
+* Add closures around subtrees in AST [Example](https://repl.it/repls/BlushingGoldenrodBrain)
+
+## Todos
+* Transformations
+* Dataloader
