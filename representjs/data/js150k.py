@@ -1,27 +1,31 @@
 import pickle
-from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 import representjs
 
-JS150K_RAW_DATA_TYPE = List[Dict]
+AST_TO_AST_BANK = set([])
+SRC_TO_SRC_BANK = set()
+VALID_AUGMENTATIONS = AST_TO_AST_BANK.union(SRC_TO_SRC_BANK)
+
 
 class JS150kDataset:
     def __init__(self):
-        self._eval_data_obj = None
-        self._train_data_obj = None
+        self.train_methods = dict(self.extract_methods(self.load_dataset('train')))
+        self.eval_methods = dict(self.extract_methods(self.load_dataset('eval')))
 
     @staticmethod
-    def _load_dataset(dataset_path: Path):
-        with dataset_path.open('rb') as f:
-            return pickle.load(f)
+    def load_dataset(config):
+        """Generator that loads a pickled dataset of js150k and extracts all methods"""
+        path = representjs.PACKAGE_ROOT / "data" / "js150k_{}.pkl".format(config)
+        with path.open('rb') as f:
+            data = pickle.load(f)
+        data_out = dict()
+        for tup in data:
+            path = tup['path']
+            js_src = tup['js']
+            data_out[path] = js_src
 
-    def eval_data_raw(self) -> JS150K_RAW_DATA_TYPE:
-        if self._eval_data_obj is None:
-            self._eval_data_obj = self._load_dataset(representjs.PACKAGE_ROOT / "data" / "js150k_eval.pkl")
-        return self._eval_data_obj
-
-    def train_data_raw(self) -> JS150K_RAW_DATA_TYPE:
-        if self._eval_data_obj is None:
-            self._eval_data_obj = self._load_dataset(representjs.PACKAGE_ROOT / "data" / "js150k_eval.pkl")
-        return self._eval_data_obj
+if __name__ == "__main__":
+    ds = JS150kDataset()
+    print(len(ds.train_methods))
+    print(len(ds.train_methods))
