@@ -1,6 +1,7 @@
 import representjs
 from representjs.data.transforms.extract_methods import extract_methods
 
+
 def test_extract_methods():
     mergesort_js = (representjs.PACKAGE_ROOT / "data" / "test_js" / "mergesort.js").read_text()
     methods = extract_methods(mergesort_js)
