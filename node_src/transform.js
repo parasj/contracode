@@ -6,7 +6,9 @@ class JavascriptAugmentations {
     constructor() {  // List[string]
         // register transformations
         this.fnAstToAst = {
-            'extract_methods': require('./ast2ast/extract_methods.js')
+            'extract_methods': require('./ast2ast/extract_methods.js');
+            'rename_variable': require('./ast2ast/rename_variable.js');
+            'insert_noop': require('./ast2ast/insert_noop.js');
         };
         this.fnSrcToSrc = {};
     }
