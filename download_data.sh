@@ -11,4 +11,11 @@ fi
 
 (cd data; tar -xzf data.tar.gz)
 
-# TODO: Download CodeSearchNet Javascript data into data/codesearchnet_javascript
+# Download CodeSearchNet Javascript data into data/codesearchnet_javascript
+REMOTE_CSNJS=https://people.eecs.berkeley.edu/~paras/datasets/codesearchnet_js/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz
+REMOTE_CSNJS_TEST=https://people.eecs.berkeley.edu/~paras/datasets/codesearchnet_js/javascript_test_0.jsonl.gz
+REMOTE_CSNJS_VALID=https://people.eecs.berkeley.edu/~paras/datasets/codesearchnet_js/javascript_valid_0.jsonl.gz
+mkdir -p data/codesearchnet_javascript
+(cd data/codesearchnet_javascript; wget $REMOTE_CSNJS)
+(cd data/codesearchnet_javascript; wget $REMOTE_CSNJS_TEST)
+(cd data/codesearchnet_javascript; wget $REMOTE_CSNJS_VALID)
