@@ -14,7 +14,9 @@ setup(
         "matplotlib",
         "seaborn",
         "pyjsparser",
-        "graphviz"
+        "graphviz",
+        "torchtext",
+        "jsonlines"
     ],
     extras_require={"test": ["pytest"]}
 )

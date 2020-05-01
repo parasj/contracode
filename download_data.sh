@@ -10,3 +10,5 @@ else
 fi
 
 (cd data; tar -xzf data.tar.gz)
+
+# TODO: Download CodeSearchNet Javascript data into data/codesearchnet_javascript
