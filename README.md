@@ -25,6 +25,7 @@ $ pip install -e "."
 - [ ] function declared through variable <-> direct function declaration
 - [ ] ~Coffeescript compiler / decaffienate~
 - [ ] Add closures around subtrees in AST [Example](https://repl.it/repls/BlushingGoldenrodBrain)
+- [ ] Obfuscation
 
 ## Downstream tasks
 - [ ] CODENN summarization for C# via StackOverflow
