@@ -7,13 +7,8 @@ Transformations are applied via a flatMap
 */
 
 function insert_noop(ast, {}) {
-    const function_decls = [];
-    traverse(ast, {
-        FunctionDeclaration(path) {
-            function_decls.push(path.node);
-        }
-    });
-    return function_decls;
+    // TODO: Implement
+    return ast;
 }
 
 module.exports = insert_noop;

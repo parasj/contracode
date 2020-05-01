@@ -6,16 +6,20 @@ class JavascriptAugmentations {
     constructor() {  // List[string]
         // register transformations
         this.fnAstToAst = {
-            'rename_variable': require('./ast2ast/rename_variable.js'),
+            // 'rename_variable': require('./ast2ast/rename_variable.js'),
             'insert_noop': require('./ast2ast/insert_noop.js'),
-            'extract_methods': require('./preprocess_extract_methods.js')
+            // 'extract_methods': require('./preprocess_extract_methods.js')
         };
         this.fnSrcToSrc = {};
     }
 
-    srcToAst(jsSrc) { return parser.parse(jsSrc, {sourceType: 'module'}); }
+    srcToAst(jsSrc) {
+        return parser.parseExpression(jsSrc);
+    }
 
-    astToSrc(ast) { return generator(ast).code; }
+    astToSrc(ast) {
+        return generator(ast).code;
+    }
 
     transform_match_input(data, is_ast, transformation) {
         // transform the data to AST or source depending on class of transformation
@@ -34,18 +38,18 @@ class JavascriptAugmentations {
         }
 
         if (fnExpectsAst && !is_ast) {
-            data = data.map(this.srcToAst);
+            data = this.srcToAst(data);
             is_ast = true;
         } else if (!fnExpectsAst && is_ast) {
-            data = data.map(this.astToSrc);
+            data = this.astToSrc(data);
             is_ast = false;
         }
-        return {'data': data, 'expects_ast': is_ast, 'produces_ast': fnProducesAst, 'fn': fnTransform}
+        return {'data': data, 'expects_ast': is_ast, 'produces_ast': fnProducesAst, 'fnTransform': fnTransform}
     }
 
     transform(jsSrc, transformationList) {
         let is_ast = false;
-        let data = [jsSrc];
+        let data = jsSrc;
 
         for (const transformationObj of transformationList) {
             const transformation = transformationObj['fn'];
@@ -55,15 +59,15 @@ class JavascriptAugmentations {
                 return transformed_obj;
             }
 
-            data = data.flatMap(x => fnTransform(x, options));
-            is_ast = fnProducesAst;
+            data = transformed_obj['fnTransform'](transformed_obj['data'], options);
+            is_ast = transformed_obj['produces_ast'];
         }
 
         if (is_ast) {
-            return data.map(this.astToSrc);
-        } else {
-            return data;
+            data = this.astToSrc(data);
         }
+
+        return data;
     }
 }
 
