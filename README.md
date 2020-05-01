@@ -28,6 +28,8 @@ $ pip install -e "."
 - [ ] Obfuscation
 
 ## Downstream tasks
+- [ ] T-SNE visualization of embeddings, rougly hand-classify subclusters
+- [ ] Qualitative nearest neighbors for a particular embedding
 - [ ] CODENN summarization for C# via StackOverflow
 - [ ] DeepBugs swapped binary operand task
 - [ ] Code2Seq method name prediction
