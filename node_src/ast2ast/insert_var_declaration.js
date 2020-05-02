@@ -12,20 +12,15 @@ const ast = parser(js_src, {sourceType: 'module'});
 Function signature for transformations:
 function(ASTNode, {optional_arguments}) -> List[AST]
 Transformations are applied via a flatMap
-function(ASTNode, {prob}) -> ASTNode
-prob is the probability to replace the name with fixed name
 */
 
-function rename_variable(ast, {prob}) {
-    traverse(ast, {
-        FunctionDeclaration(path) {
-            if (Math.random() < prob) {
-                var exampleState = path.node.params[0].name;
-                path.scope.rename(exampleState);
-            }
-        }
+function insert_var_declaration(ast, {prob}) {
+    FunctionDeclaration(path) {
+        if (Math.random() < prob) {
+            const id = path.scope.generateUidIdentifierBasedOnNode(path.node.id);
+            path.get('body').unshiftContainer('body', t.variableDeclaration("var", [t.variableDeclarator(id)]));
     }
     return ast;
 }
 
-module.exports = rename_variable;
+module.exports = insert_var_declaration;
