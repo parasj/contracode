@@ -1,12 +1,4 @@
-const fs = require('fs');
-const parser = require('@babel/parser').parse;
 const traverse = require('@babel/traverse').default;
-const generate = require('@babel/generator').default;
-const t = require("@babel/types");
-const prettier = require('prettier');
-
-const js_src = fs.readFileSync(0).toString(); // STDIN_FILENO = 0
-const ast = parser(js_src, {sourceType: 'module'});
 
 /*
 Function signature for transformations:
@@ -16,7 +8,7 @@ function(ASTNode, {prob}) -> ASTNode
 prob is the probability to replace the name with fixed name
 */
 
-function rename_variable(ast, {prob}) {
+module.exports = (ast, {prob}) => {
     traverse(ast, {
         FunctionDeclaration(path) {
             if (Math.random() < prob) {
@@ -24,8 +16,7 @@ function rename_variable(ast, {prob}) {
                 path.scope.rename(exampleState);
             }
         }
-    }
+    });
     return ast;
 }
 
-module.exports = rename_variable;
