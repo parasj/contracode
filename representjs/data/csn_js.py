@@ -1,14 +1,13 @@
 import gzip
 import json
 import jsonlines
-import io
 import os
 from typing import List
 
 import torch
 import tqdm
 
-from representjs.data.transforms.util import dispatch_to_node
+from data.util import dispatch_to_node
 
 # Possible keys:
 #   'identifier' for method name which may be blank for anonymous fns
