@@ -5,7 +5,7 @@ from json import JSONDecodeError
 from typing import Dict
 
 from representjs import PACKAGE_ROOT
-from representjs.data.transforms.util import dispatch_to_node
+from data.util import dispatch_to_node
 
 AST_TO_AST_BANK = set([])
 SRC_TO_SRC_BANK = set()

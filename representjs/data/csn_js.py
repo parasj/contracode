@@ -11,7 +11,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 import tqdm
 
-from representjs.data.transforms.util import dispatch_to_node
+from data.util import dispatch_to_node
 
 # Possible keys:
 #   'identifier' for method name which may be blank for anonymous fns

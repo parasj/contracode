@@ -30,3 +30,6 @@ if __name__ == "__main__":
     os.system("wget -nc -P {} {}".format(str(csn_base_dir), REMOTE_CSNJS))
     os.system("wget -nc -P {} {}".format(str(csn_base_dir), REMOTE_CSNJS_TEST))
     os.system("wget -nc -P {} {}".format(str(csn_base_dir), REMOTE_CSNJS_VALID))
+    os.system("gunzip {}".format(str(csn_base_dir / 'javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz')))
+    os.system("gunzip {}".format(str(csn_base_dir / 'javascript_test_0.jsonl.gz')))
+    os.system("gunzip {}".format(str(csn_base_dir / 'javascript_valid_0.jsonl.gz')))
