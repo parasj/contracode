@@ -187,12 +187,30 @@ if __name__ == "__main__":
     print("Example", train_dataset[0])
     print()
 
+    sp = spm.SentencePieceProcessor()
+    sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
+    print("===" * 10)
+    print("Test identity dataloader")
+    print("===" * 10)
+    train_loader = javascript_dataloader(
+        train_dataset, batch_size=2, shuffle=False,
+        augmentations=[], sp=sp, program_mode="identity", label_mode="none",
+        subword_regularization_alpha=0.1)
+    for X, label in train_loader:
+        print("X shape:", X.shape)
+        print("Label:", label)
+        for i in range(len(X)):
+            print(f"Decoded X[{i}]:", sp.DecodeIds([int(id) for id in X[i]]))
+            print()
+        break
+
+    # TODO: Pass probability of applying each transform
+    # augmentations = [{"fn": "rename_variable", "prob": 0.1}]
+    # augmentations = [{"fn": "insert_var_declaration", "prob": 0.1}]
+    augmentations = [{"fn": "sample_lines", "line_length_pct": 0.5}]
     print("===" * 10)
     print("Test augmentation dataloader")
     print("===" * 10)
-    augmentations = [{"fn": "insert_noop"}]  # TODO: Pass probability of applying each transform
-    sp = spm.SentencePieceProcessor()
-    sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
     train_loader = javascript_dataloader(
         train_dataset, batch_size=2, shuffle=False,
         augmentations=augmentations, sp=sp, program_mode="augmentation", label_mode="none",
@@ -208,9 +226,6 @@ if __name__ == "__main__":
     print("===" * 10)
     print("Test contrastive dataloader")
     print("===" * 10)
-    augmentations = [{"fn": "insert_noop"}]  # TODO: Pass probability of applying each transform
-    sp = spm.SentencePieceProcessor()
-    sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
     train_loader = javascript_dataloader(
         train_dataset, batch_size=2, shuffle=False,
         augmentations=augmentations, sp=sp, program_mode="contrastive", label_mode="none",
@@ -219,7 +234,7 @@ if __name__ == "__main__":
         print("X shape:", X.shape)
         print("Label:", label)
         for i in [0]:
-            print(f"Decoded X[{i}, 0]:", sp.DecodeIds([int(id) for id in X[i, 0]]))
-            print(f"Decoded X[{i}, 1]:", sp.DecodeIds([int(id) for id in X[i, 1]]))
+            print(f"##Transform 1: Decoded X[{i}, 0]:\n\t", sp.DecodeIds([int(id) for id in X[i, 0]]))
+            print(f"##Transform 2: Decoded X[{i}, 1]:\n\t", sp.DecodeIds([int(id) for id in X[i, 1]]))
             print()
         break

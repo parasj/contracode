@@ -16,5 +16,5 @@ module.exports = (js_src, {line_length_pct = 0.5}) => {
     for (const line_idx of sorted_sample) {
         out_lines.push(lines[line_idx]);
     }
-    return out_lines;
+    return out_lines.join("\n");
 }
