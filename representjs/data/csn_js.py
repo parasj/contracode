@@ -30,7 +30,6 @@ class JSONLinesDataset(torch.utils.data.Dataset):
 
     def __init__(self, path, fields=FUNCTION_ONLY_FIELDS, **kwargs):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
-
         Arguments:
             path (str): Path to the data file. Must be in .jsonl.gz or .jsonl format.
             fields (dict[str: str]:
@@ -97,6 +96,7 @@ def javascript_augmentation_collate_fn(examples: List[dict], augmentations: List
     print("t1", t1)
     print("t2", t2)
 
+
 def javascript_augmentation_dataloader(dataset, augmentations: List[dict], **kwargs):
     collate_fn = lambda batch: javascript_augmentation_collate_fn(batch, augmentations)
     return torch.utils.data.DataLoader(dataset, collate_fn=collate_fn, **kwargs)
@@ -112,7 +112,3 @@ if __name__ == "__main__":
     augmentations = [{"fn": "insert_noop"}]  # TODO: Pass probability of applying each transform
     train_loader = javascript_augmentation_dataloader(
         train_dataset, batch_size=2, shuffle=False, augmentations=augmentations)
-    for batch in train_loader:
-        import IPython
-        IPython.embed()
-        break
