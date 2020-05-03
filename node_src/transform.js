@@ -7,10 +7,11 @@ class JavascriptAugmentations {
         // register transformations
         this.fnAstToAst = {
             'rename_variable': require('./ast2ast/rename_variable.js'),
-            // 'insert_var_declaration': require('./ast2ast/insert_var_declaration.js'),
-            // 'extract_methods': require('./preprocess_extract_methods.js')
+            'insert_var_declaration': require('./ast2ast/insert_var_declaration.js'),
         };
-        this.fnSrcToSrc = {};
+        this.fnSrcToSrc = {
+            'sample_lines': require('./source2source/sample_lines')
+        };
     }
 
     srcToAst(jsSrc) {

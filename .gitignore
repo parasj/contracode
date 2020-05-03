@@ -1,7 +1,4 @@
-data/data
-data/data.tar.gz
-data/js150k_eval.pkl
-data/js150k_train.pkl
+data/
 
 # Editors
 .vscode/
