@@ -11,7 +11,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 import tqdm
 
-from data.util import dispatch_to_node
+from representjs.data.transforms.util import dispatch_to_node
 
 # Possible keys:
 #   'identifier' for method name which may be blank for anonymous fns
@@ -61,7 +61,6 @@ class JSONLinesDataset(torch.utils.data.Dataset):
 
     def __init__(self, path, fields=FUNCTION_ONLY_FIELDS, **kwargs):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
-
         Arguments:
             path (str): Path to the data file. Must be in .jsonl.gz or .jsonl format.
             fields (dict[str: str]):
