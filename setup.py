@@ -17,10 +17,12 @@ setup(
         "sentencepiece",
         "torch",
         "torchtext",
-        "torchtext",
         "tqdm",
         "transformers",
-        "wandb"
+        "requests",
+        "regex",
+        "sacremoses",
+        "wandb",
     ],
     extras_require={"test": ["pytest"]}
 )
