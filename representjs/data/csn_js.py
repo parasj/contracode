@@ -18,7 +18,6 @@ from representjs.data.util import dispatch_to_node
 #   'function_tokens'
 #   'docstring' for the docstring (blank for most, filled in for about 100k)
 #   'docstring_tokens'
-from scripts.main import DATA_DIR
 
 FUNCTION_ONLY_FIELDS = {"function": "function"}
 
@@ -231,67 +230,67 @@ def javascript_dataloader(*args,
 
 
 if __name__ == "__main__":
-    # print("===" * 10)
-    # print("Test dataset")
-    # print("===" * 10)
+    print("===" * 10)
+    print("Test dataset")
+    print("===" * 10)
     data_dir = "data/codesearchnet_javascript"
     train_filepath = os.path.join(data_dir, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
-    # train_dataset = JSONLinesDataset(train_filepath, limit_size=100)
-    # print("Number of training functions:", len(train_dataset))
-    # print("Example", train_dataset[0])
-    # print()
+    train_dataset = JSONLinesDataset(train_filepath, limit_size=100)
+    print("Number of training functions:", len(train_dataset))
+    print("Example", train_dataset[0])
+    print()
 
-    # sp = spm.SentencePieceProcessor()
-    # sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
-    # print("===" * 10)
-    # print("Test identity dataloader")
-    # print("===" * 10)
-    # train_loader = javascript_dataloader(
-    #     train_dataset, batch_size=2, shuffle=False,
-    #     augmentations=[], sp=sp, program_mode="identity",
-    #     subword_regularization_alpha=0.1)
-    # for X, label in train_loader:
-    #     print("X shape:", X.shape)
-    #     print("Label:", label)
-    #     for i in range(len(X)):
-    #         print(f"Decoded X[{i}]:", sp.DecodeIds([int(id) for id in X[i]]))
-    #         print()
-    #     break
+    sp = spm.SentencePieceProcessor()
+    sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
+    print("===" * 10)
+    print("Test identity dataloader")
+    print("===" * 10)
+    train_loader = javascript_dataloader(
+        train_dataset, batch_size=2, shuffle=False,
+        augmentations=[], sp=sp, program_mode="identity",
+        subword_regularization_alpha=0.1)
+    for X, label in train_loader:
+        print("X shape:", X.shape)
+        print("Label:", label)
+        for i in range(len(X)):
+            print(f"Decoded X[{i}]:", sp.DecodeIds([int(id) for id in X[i]]))
+            print()
+        break
 
-    # # TODO: Pass probability of applying each transform
-    # # augmentations = [{"fn": "rename_variable", "prob": 0.1}]
-    # # augmentations = [{"fn": "insert_var_declaration", "prob": 0.1}]
-    # augmentations = [{"fn": "sample_lines", "line_length_pct": 0.5}]
-    # print("===" * 10)
-    # print("Test augmentation dataloader")
-    # print("===" * 10)
-    # train_loader = javascript_dataloader(
-    #     train_dataset, batch_size=2, shuffle=False,
-    #     augmentations=augmentations, sp=sp, program_mode="augmentation",
-    #     subword_regularization_alpha=0.1)
-    # for X, label in train_loader:
-    #     print("X shape:", X.shape)
-    #     print("Label:", label)
-    #     for i in range(len(X)):
-    #         print(f"Decoded X[{i}]:", sp.DecodeIds([int(id) for id in X[i]]))
-    #         print()
-    #     break
+    # TODO: Pass probability of applying each transform
+    # augmentations = [{"fn": "rename_variable", "prob": 0.1}]
+    # augmentations = [{"fn": "insert_var_declaration", "prob": 0.1}]
+    augmentations = [{"fn": "sample_lines", "line_length_pct": 0.5}]
+    print("===" * 10)
+    print("Test augmentation dataloader")
+    print("===" * 10)
+    train_loader = javascript_dataloader(
+        train_dataset, batch_size=2, shuffle=False,
+        augmentations=augmentations, sp=sp, program_mode="augmentation",
+        subword_regularization_alpha=0.1)
+    for X, label in train_loader:
+        print("X shape:", X.shape)
+        print("Label:", label)
+        for i in range(len(X)):
+            print(f"Decoded X[{i}]:", sp.DecodeIds([int(id) for id in X[i]]))
+            print()
+        break
 
-    # print("===" * 10)
-    # print("Test contrastive dataloader")
-    # print("===" * 10)
-    # train_loader = javascript_dataloader(
-    #     train_dataset, batch_size=2, shuffle=False,
-    #     augmentations=augmentations, sp=sp, program_mode="contrastive",
-    #     subword_regularization_alpha=0.1)
-    # for X, label in train_loader:
-    #     print("X shape:", X.shape)
-    #     print("Label:", label)
-    #     for i in [0]:
-    #         print(f"##Transform 1: Decoded X[{i}, 0]:\n\t", sp.DecodeIds([int(id) for id in X[i, 0]]))
-    #         print(f"##Transform 2: Decoded X[{i}, 1]:\n\t", sp.DecodeIds([int(id) for id in X[i, 1]]))
-    #         print()
-    #     break
+    print("===" * 10)
+    print("Test contrastive dataloader")
+    print("===" * 10)
+    train_loader = javascript_dataloader(
+        train_dataset, batch_size=2, shuffle=False,
+        augmentations=augmentations, sp=sp, program_mode="contrastive",
+        subword_regularization_alpha=0.1)
+    for X, label in train_loader:
+        print("X shape:", X.shape)
+        print("Label:", label)
+        for i in [0]:
+            print(f"##Transform 1: Decoded X[{i}, 0]:\n\t", sp.DecodeIds([int(id) for id in X[i, 0]]))
+            print(f"##Transform 2: Decoded X[{i}, 1]:\n\t", sp.DecodeIds([int(id) for id in X[i, 1]]))
+            print()
+        break
 
     ######### Test labeled tasks
     sp = spm.SentencePieceProcessor()
@@ -316,5 +315,3 @@ if __name__ == "__main__":
             print(f"Pieces for label[{i}]:", [sp.IdToPiece(int(id)) for id in label[i]])
             print()
         break
-CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
-SPM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")

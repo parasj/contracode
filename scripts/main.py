@@ -7,14 +7,15 @@ import torch.nn.functional as F
 import tqdm
 import wandb
 
-from representjs.data.csn_js import CSNJS_TRAIN_FILEPATH, SPM_FILEPATH
 from representjs import RUN_DIR
 from representjs.data.csn_js import javascript_dataloader, JSONLinesDataset
 from representjs.models import TransformerModel
 
-
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
+CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
+SPM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
+
 
 def train(
     run_name: str,
@@ -117,6 +118,7 @@ def train(
                 "config": config
             }, str(model_file.resolve()))
             print("Done.")
+
 
 if __name__=="__main__":
     fire.Fire({
