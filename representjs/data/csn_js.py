@@ -3,7 +3,7 @@ import json
 import jsonlines
 import os
 import re
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Iterable
 
 import sentencepiece as spm
 import torch
@@ -21,9 +21,10 @@ from representjs.data.util import dispatch_to_node
 
 FUNCTION_ONLY_FIELDS = {"function": "function"}
 
-
 _newline_regex = re.compile(r'\n')
 _whitespace_regex = re.compile(r'[ \t\n]+')
+
+
 def normalize_program(fn: str):
     fn = _newline_regex.sub(r' [EOL]', fn)
     fn = _whitespace_regex.sub(' ', fn)
@@ -90,7 +91,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
     def __init__(self,
                  path,
                  fields=FUNCTION_ONLY_FIELDS,
-                 require_fields: Optional[Set[str]]=None,
+                 require_fields: Optional[Iterable[str]] = None,
                  limit_size=-1,
                  **kwargs):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
@@ -186,7 +187,7 @@ def javascript_collate(examples: List[dict],
     bos_id = sp.PieceToId("<s>")
     eos_id = sp.PieceToId("</s>")
     pad_id = sp.PieceToId("[PAD]")
-    X = [torch.tensor([bos_id] + ids[:(max_length-2)] + [eos_id]) for ids in X]
+    X = [torch.tensor([bos_id] + ids[:(max_length - 2)] + [eos_id]) for ids in X]
     X = pad_sequence(X, batch_first=True, padding_value=pad_id)
 
     # Create padded tensor for labels (good for seq2seq tasks)
@@ -211,9 +212,9 @@ def javascript_collate(examples: List[dict],
 def javascript_dataloader(*args,
                           augmentations: List[dict],
                           sp: spm.SentencePieceProcessor,
-                          program_mode: str="identity",
-                          subword_regularization_alpha: float=0,
-                          max_length: int=1024,
+                          program_mode: str = "identity",
+                          subword_regularization_alpha: float = 0,
+                          max_length: int = 1024,
                           **kwargs):
     """
     Arguments:
@@ -225,7 +226,8 @@ def javascript_dataloader(*args,
             sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
     """
     assert 'collate_fn' not in kwargs
-    collate_fn = lambda batch: javascript_collate(batch, augmentations, sp, program_mode, subword_regularization_alpha, max_length)
+    collate_fn = lambda batch: javascript_collate(batch, augmentations, sp, program_mode, subword_regularization_alpha,
+                                                  max_length)
     return torch.utils.data.DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 
