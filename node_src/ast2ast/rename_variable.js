@@ -3,11 +3,6 @@ const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
 const t = require("@babel/types");
 const prettier = require('prettier');
-const fs = require('fs');
-
-const js_src = fs.readFileSync(process.argv[2]).toString(); // STDIN_FILENO = 0
-const ast = parser(js_src);
-// console.log(js_src)
 
 /*
 Function signature for transformations:
@@ -17,7 +12,7 @@ function(ASTNode, {prob}) -> ASTNode
 prob is the probability to replace the name with fixed name
 */
 
-function rename_variable(ast, prob) {
+function rename_variable(ast, {prob = 0.5}) {
     traverse(ast, {
         FunctionDeclaration(path) {
             if (Math.random() < prob) {
@@ -29,5 +24,4 @@ function rename_variable(ast, prob) {
     return ast;
 }
 
-// console.log(generate(rename_variable(ast, 1)).code);
 module.exports = rename_variable;
