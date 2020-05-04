@@ -11,14 +11,14 @@ Transformations are applied via a flatMap
 */
 
 function insert_var_declaration(ast, {prob = 0.5}) {
-    // traverse(ast, {
-    //     FunctionDeclaration(path) {
-    //        if (Math.random() < prob) {
-    //            const id = path.scope.generateUidIdentifierBasedOnNode(path.node.id);
-    //            path.get('body').unshiftContainer('body', t.variableDeclaration("var", [t.variableDeclarator(id)]));
-    //        }
-    //    }
-    //});
+    traverse(ast, {
+        FunctionDeclaration(path) {
+            if (Math.random() < prob) {
+                const id = path.scope.generateUidIdentifierBasedOnNode(path.node.id);
+                path.get('body').unshiftContainer('body', t.variableDeclaration("var", [t.variableDeclarator(id)]));
+            }
+        }
+    });
     return ast;
 }
 
