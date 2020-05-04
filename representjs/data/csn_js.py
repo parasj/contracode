@@ -128,8 +128,8 @@ class JSONLinesDataset(torch.utils.data.Dataset):
 
         logger.debug(f"Loaded {len(self.examples)} examples")
         if require_fields is not None and 'identifier' in require_fields:
-            logger.debug("Num examples with valid identifier field:" + _num_valid_id)
-            logger.debug("Num examples with invalid identifier field:" + _num_invalid_id)
+            logger.debug(f"Num examples with valid identifier field: {_num_valid_id}")
+            logger.debug(f"Num examples with invalid identifier field:{_num_invalid_id}")
 
     def __len__(self):
         return len(self.examples)

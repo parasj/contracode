@@ -13,7 +13,7 @@ from representjs.models import TransformerModel
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
-CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
+CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
 
 
@@ -30,7 +30,7 @@ def train(
 
         # Optimization
         num_epochs: int = 100,
-        save_every: int = 5,
+        save_every: int = 2,
         batch_size: int = 256,
         lr: float = 8e-4,
 
@@ -89,9 +89,9 @@ def train(
     )
 
     global_step = 0
-    for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch"):
-        print(f"Starting epoch {epoch}")
-
+    for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
+        logging.info(f"Starting epoch {epoch}\n")
+        wandb.log({'epoch': epoch, 'lr': lr.get_lr()})
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
         for X, Y in pbar:
             # TODO: Implement pretraining
@@ -115,7 +115,7 @@ def train(
 
         if epoch % save_every == 0:
             model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
-            print(f"Saving checkpoint to {model_file}...", endl=" ")
+            logging.info(f"Saving checkpoint to {model_file}...", endl=" ")
             torch.save({
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
@@ -123,10 +123,8 @@ def train(
                 "global_step": global_step,
                 "config": config
             }, str(model_file.resolve()))
-            print("Done.")
+            logging.info("Done.")
 
 
 if __name__ == "__main__":
-    fire.Fire({
-        "train": train,
-    })
+    fire.Fire({"train": train})
