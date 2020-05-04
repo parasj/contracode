@@ -13,6 +13,7 @@ setup(
         "numpy",
         "pandas",
         "pyjsparser",
+        "pytorch-lightning",
         "seaborn",
         "sentencepiece",
         "torch",
