@@ -89,7 +89,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
                  path,
                  fields=FUNCTION_ONLY_FIELDS,
                  require_fields: Optional[Iterable[str]] = None,
-                 limit_size=-1,
+                 limit_size=-1, debug_charset=False,
                  **kwargs):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
         Arguments:
@@ -121,15 +121,15 @@ class JSONLinesDataset(torch.utils.data.Dataset):
                     print()
                     logger.info(f"WARNING: Limiting dataset size to {limit_size}")
                     break
-            if len(label_char_set) != nl:
-                logger.debug("update label char set:", label_char_set)
+            if debug_charset and len(label_char_set) != nl:
+                logger.debug(f"update label char set: {label_char_set}")
                 nl = len(label_char_set)
         f.close()
 
         logger.debug(f"Loaded {len(self.examples)} examples")
         if require_fields is not None and 'identifier' in require_fields:
-            logger.debug("Num examples with valid identifier field:", _num_valid_id)
-            logger.debug("Num examples with invalid identifier field:", _num_invalid_id)
+            logger.debug("Num examples with valid identifier field:" + _num_valid_id)
+            logger.debug("Num examples with invalid identifier field:" + _num_invalid_id)
 
     def __len__(self):
         return len(self.examples)
@@ -234,8 +234,8 @@ if __name__ == "__main__":
     data_dir = "data/codesearchnet_javascript"
     train_filepath = os.path.join(data_dir, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
     train_dataset = JSONLinesDataset(train_filepath, limit_size=100)
-    logger.info("Number of training functions:", len(train_dataset))
-    logger.info("Example", train_dataset[0])
+    logger.info(f"Number of training functions: {len(train_dataset)}")
+    logger.info(f"Example {train_dataset[0]}")
 
     sp = spm.SentencePieceProcessor()
     sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
@@ -247,10 +247,10 @@ if __name__ == "__main__":
         augmentations=[], sp=sp, program_mode="identity",
         subword_regularization_alpha=0.1)
     for X, label in train_loader:
-        logger.info("X shape:", X.shape)
-        logger.info("Label:", label)
+        logger.info(f"X shape: {X.shape}")
+        logger.info(f"Label: {label}")
         for i in range(len(X)):
-            logger.info(f"Decoded X[{i}]:", sp.DecodeIds([int(id) for id in X[i]]))
+            logger.info(f"Decoded X[{i}]: {sp.DecodeIds([int(id) for id in X[i]])}")
         break
 
     # TODO: Pass probability of applying each transform
@@ -265,10 +265,10 @@ if __name__ == "__main__":
         augmentations=augmentations, sp=sp, program_mode="augmentation",
         subword_regularization_alpha=0.1)
     for X, label in train_loader:
-        logger.info("X shape:", X.shape)
-        logger.info("Label:", label)
+        logger.info(f"X shape: {X.shape}")
+        logger.info(f"Label: {label}")
         for i in range(len(X)):
-            logger.info(f"Decoded X[{i}]:", sp.DecodeIds([int(id) for id in X[i]]))
+            logger.info(f"Decoded X[{i}]: {sp.DecodeIds([int(id) for id in X[i]])}")
         break
 
     logger.info("===" * 10)
@@ -279,33 +279,32 @@ if __name__ == "__main__":
         augmentations=augmentations, sp=sp, program_mode="contrastive",
         subword_regularization_alpha=0.1)
     for X, label in train_loader:
-        logger.info("X shape:", X.shape)
-        logger.info("Label:", label)
+        logger.info(f"X shape: {X.shape}")
+        logger.info(f"Label: {label}")
         for i in [0]:
-            logger.info(f"##Transform 1: Decoded X[{i}, 0]:\n\t", sp.DecodeIds([int(id) for id in X[i, 0]]))
-            logger.info(f"##Transform 2: Decoded X[{i}, 1]:\n\t", sp.DecodeIds([int(id) for id in X[i, 1]]))
+            logger.info(f"##Transform 1: Decoded X[{i}, 0]:\n\t {sp.DecodeIds([int(id) for id in X[i, 0]])}")
+            logger.info(f"##Transform 2: Decoded X[{i}, 1]:\n\t {sp.DecodeIds([int(id) for id in X[i, 1]])}")
         break
 
     ######### Test labeled tasks
     sp = spm.SentencePieceProcessor()
     sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
-    print("===" * 10)
-    print("Test identity dataloader, method name labels")
-    print("===" * 10)
+    logger.info("===" * 10)
+    logger.info("Test identity dataloader, method name labels")
+    logger.info("===" * 10)
     labeled_dataset = JSONLinesDataset(train_filepath,
                                     fields={"function": "function", "identifier": "label"},
                                     require_fields=["identifier"], limit_size=32000, subword_regularization_alpha=0.1)
-    print("Len of labeled data", len(labeled_dataset))
+    logger.info(f"Len of labeled data {len(labeled_dataset)}")
     train_loader = javascript_dataloader(
         labeled_dataset, batch_size=2, shuffle=False,
         augmentations=[], sp=sp, program_mode="identity",
         subword_regularization_alpha=0.1)
     for X, label in train_loader:
-        print("X shape:", X.shape)
-        print("Label:", label)
+        logger.info(f"X shape: {X.shape}")
+        logger.info(f"Label: {label}")
         for i in range(len(X)):
-            print(f"Decoded X[{i}]:", sp.DecodeIds([int(id) for id in X[i]]))
-            print(f"Decoded label[{i}]:", sp.DecodeIds([int(id) for id in label[i]]))
-            print(f"Pieces for label[{i}]:", [sp.IdToPiece(int(id)) for id in label[i]])
-            print()
+            logger.info(f"Decoded X[{i}]: {sp.DecodeIds([int(id) for id in X[i]])}")
+            logger.info(f"Decoded label[{i}]: {sp.DecodeIds([int(id) for id in label[i]])}")
+            logger.info(f"Pieces for label[{i}]: {[sp.IdToPiece(int(id)) for id in label[i]]}")
         break
