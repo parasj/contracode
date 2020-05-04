@@ -7,39 +7,46 @@ import torch.nn.functional as F
 import tqdm
 import wandb
 
-from representjs.data.csn_js import CSNJS_TRAIN_FILEPATH, SPM_FILEPATH
 from representjs import RUN_DIR
 from representjs.data.csn_js import javascript_dataloader, JSONLinesDataset
 from representjs.models import TransformerModel
 
-
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
+CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
+SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
+
 
 def train(
-    run_name: str,
-    # Data
-    train_filepath: str= CSNJS_TRAIN_FILEPATH,
-    spm_filepath: str= SPM_FILEPATH,
-    program_mode="identity",
-    label_mode="none",
-    num_workers=1,
-    limit_dataset_size=-1,
-    # Optimization
-    num_epochs: int=100,
-    save_every: int=5,
-    batch_size: int=256,
-    lr: float=8e-4,
-    # Loss
-    subword_regularization_alpha: float=0,
-    # Computational
-    use_cuda: bool=True):
+        run_name: str,
+
+        # Data
+        train_filepath: str = CSNJS_TRAIN_FILEPATH,
+        spm_filepath: str = SPM_UNIGRAM_FILEPATH,
+        program_mode="identity",
+        label_mode="none",
+        num_workers=1,
+        limit_dataset_size=-1,
+
+        # Optimization
+        num_epochs: int = 100,
+        save_every: int = 5,
+        batch_size: int = 256,
+        lr: float = 8e-4,
+
+        # Loss
+        subword_regularization_alpha: float = 0,
+
+        # Computational
+        use_cuda: bool = True
+):
     """Train model"""
     run_dir = RUN_DIR / run_name
     run_dir.mkdir(exist_ok=True, parents=True)
     print(f"Saving model checkpoints to {run_dir}")
     config = locals()
-    wandb.init(name=run_name, config=config, job_type="training", project="code-representation")
+    print(config)
+    wandb.init(name=run_name, config=config, job_type="training", project="code-representation", entity="ml4code")
 
     if use_cuda:
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
@@ -82,7 +89,7 @@ def train(
     )
 
     global_step = 0
-    for epoch in tqdm.trange(1, num_epochs+1, desc="training", unit="epoch"):
+    for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch"):
         print(f"Starting epoch {epoch}")
 
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
@@ -105,7 +112,7 @@ def train(
                 f"label-{label_mode}/program-{program_mode}/loss": loss.item()
             }, step=global_step)
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
-        
+
         if epoch % save_every == 0:
             model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             print(f"Saving checkpoint to {model_file}...", endl=" ")
@@ -118,7 +125,8 @@ def train(
             }, str(model_file.resolve()))
             print("Done.")
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     fire.Fire({
-        "train": train
+        "train": train,
     })

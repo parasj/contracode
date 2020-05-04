@@ -13,6 +13,7 @@ setup(
         "numpy",
         "pandas",
         "pyjsparser",
+        "pytorch-lightning",
         "seaborn",
         "sentencepiece",
         "torch",
@@ -23,6 +24,7 @@ setup(
         "regex",
         "sacremoses",
         "wandb",
+        "loguru"
     ],
     extras_require={"test": ["pytest"]}
 )
