@@ -14,14 +14,15 @@ from representjs.models import TransformerModel
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
 CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
-SPM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
+SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
 
 
 def train(
         run_name: str,
+
         # Data
         train_filepath: str = CSNJS_TRAIN_FILEPATH,
-        spm_filepath: str = SPM_FILEPATH,
+        spm_filepath: str = SPM_UNIGRAM_FILEPATH,
         program_mode="identity",
         label_mode="none",
         num_workers=1,
@@ -44,7 +45,8 @@ def train(
     run_dir.mkdir(exist_ok=True, parents=True)
     print(f"Saving model checkpoints to {run_dir}")
     config = locals()
-    wandb.init(name=run_name, config=config, job_type="training", project="code-representation")
+    print(config)
+    wandb.init(name=run_name, config=config, job_type="training", project="code-representation", entity="ml4code")
 
     if use_cuda:
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
@@ -126,5 +128,5 @@ def train(
 
 if __name__ == "__main__":
     fire.Fire({
-        "train": train
+        "train": train,
     })
