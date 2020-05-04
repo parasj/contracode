@@ -3,7 +3,7 @@ import json
 import jsonlines
 import os
 import re
-from typing import List
+from typing import List, Optional, Set
 
 import sentencepiece as spm
 import torch
@@ -29,11 +29,13 @@ def normalize_program(fn: str):
     return fn
 
 
-def _make_example(json_dict, fields):
-    out_dict = {}
-    for json_key, out_key in fields.items():
-        out_dict[out_key] = json_dict[json_key]
-    return out_dict
+def _make_example(json_dict, fields, require_fields):
+    if require_fields:
+        for field in require_fields:
+            if field not in json_dict or not json_dict[field]:
+                return None
+
+    return {out_key: json_dict[json_key] for json_key, out_key in fields.items()}
 
 
 def _augment(transform_payload: List[dict]) -> List[str]:
@@ -58,7 +60,12 @@ def _augment(transform_payload: List[dict]) -> List[str]:
 class JSONLinesDataset(torch.utils.data.Dataset):
     """Defines a Dataset of columns stored in jsonlines format."""
 
-    def __init__(self, path, fields=FUNCTION_ONLY_FIELDS, **kwargs):
+    def __init__(self,
+                 path,
+                 fields=FUNCTION_ONLY_FIELDS,
+                 require_fields: Optional[Set[str]]=None,
+                 limit_size=-1,
+                 **kwargs):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
         Arguments:
             path (str): Path to the data file. Must be in .jsonl.gz or .jsonl format.
@@ -68,6 +75,8 @@ class JSONLinesDataset(torch.utils.data.Dataset):
                 Keys not present in the input dictionary are ignored.
                 This allows the user to rename columns from their JSON key names
                 and also enables selecting a subset of columns to load.
+            require_fields:
+                Set of remapped data fields required to be present
         """
         if path.endswith(".jsonl.gz"):
             f = gzip.open(os.path.expanduser(path), "rb")
@@ -76,9 +85,12 @@ class JSONLinesDataset(torch.utils.data.Dataset):
         reader = jsonlines.Reader(f)
         self.examples = []
         for line in tqdm.tqdm(reader, f"Loading {path}"):
-            self.examples.append(_make_example(line, fields))
-            if len(self.examples) >= 100:
-                break
+            example = _make_example(line, fields, require_fields)
+            if example:
+                self.examples.append(example)
+                if limit_size >= 0 and len(self.examples) >= limit_size:
+                    print(f"WARNING: Limiting dataset size to {limit_size}")
+                    break
         f.close()
 
     def __len__(self):
@@ -92,7 +104,6 @@ def javascript_collate(examples: List[dict],
                        augmentations: List[dict],
                        sp: spm.SentencePieceProcessor,
                        program_mode: str,
-                       label_mode: str,
                        subword_regularization_alpha: float,
                        max_length: int):
     """Augments and batches a list of function dicts.
@@ -104,7 +115,6 @@ def javascript_collate(examples: List[dict],
         sp (SentencePieceProcessor): For tokenizing batch elements after augmentations
     """
     assert program_mode in ["contrastive", "augmentation", "identity"]
-    assert label_mode == "none"
 
     B = len(examples)
 
@@ -140,23 +150,30 @@ def javascript_collate(examples: List[dict],
     pad_id = sp.PieceToId("[PAD]")
     X = [torch.tensor([bos_id] + ids[:(max_length-2)] + [eos_id]) for ids in X]
     X = pad_sequence(X, batch_first=True, padding_value=pad_id)
-    
+
+    # Create padded tensor for labels (good for seq2seq tasks)
+    if "label" in examples[0]:
+        label = [sp.EncodeAsIds(ex["label"]) for ex in examples]
+        label = [torch.tensor([bos_id] + ids + [eos_id]) for ids in label]
+        label = pad_sequence(label, batch_first=True, padding_value=pad_id)
+    else:
+        label = None
+
     if program_mode == "contrastive":
         # Reshape X to [B, 2, T]
         T = X.size(-1)
         X = torch.reshape(X, (2, B, -1))
         X = torch.transpose(X, 0, 1)
         assert X.shape == (B, 2, T)
+        assert label is None, "label should be None when using contrastive program dataloader"
 
-    # TODO: Add labels
-    return (X, None)
+    return (X, label)
 
 
 def javascript_dataloader(*args,
                           augmentations: List[dict],
                           sp: spm.SentencePieceProcessor,
                           program_mode: str="identity",
-                          label_mode: str="none",
                           subword_regularization_alpha: float=0,
                           max_length: int=1024,
                           **kwargs):
@@ -170,7 +187,7 @@ def javascript_dataloader(*args,
             sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
     """
     assert 'collate_fn' not in kwargs
-    collate_fn = lambda batch: javascript_collate(batch, augmentations, sp, program_mode, label_mode, subword_regularization_alpha, max_length)
+    collate_fn = lambda batch: javascript_collate(batch, augmentations, sp, program_mode, subword_regularization_alpha, max_length)
     return torch.utils.data.DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 
@@ -180,8 +197,8 @@ if __name__ == "__main__":
     print("===" * 10)
     data_dir = "data/codesearchnet_javascript"
     train_filepath = os.path.join(data_dir, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
-    train_dataset = JSONLinesDataset(train_filepath)
-    print("Number of training functions:", len(train_dataset[0]))
+    train_dataset = JSONLinesDataset(train_filepath, limit_size=100)
+    print("Number of training functions:", len(train_dataset))
     print("Example", train_dataset[0])
     print()
 
@@ -192,7 +209,7 @@ if __name__ == "__main__":
     print("===" * 10)
     train_loader = javascript_dataloader(
         train_dataset, batch_size=2, shuffle=False,
-        augmentations=[], sp=sp, program_mode="identity", label_mode="none",
+        augmentations=[], sp=sp, program_mode="identity",
         subword_regularization_alpha=0.1)
     for X, label in train_loader:
         print("X shape:", X.shape)
@@ -211,7 +228,7 @@ if __name__ == "__main__":
     print("===" * 10)
     train_loader = javascript_dataloader(
         train_dataset, batch_size=2, shuffle=False,
-        augmentations=augmentations, sp=sp, program_mode="augmentation", label_mode="none",
+        augmentations=augmentations, sp=sp, program_mode="augmentation",
         subword_regularization_alpha=0.1)
     for X, label in train_loader:
         print("X shape:", X.shape)
@@ -226,7 +243,7 @@ if __name__ == "__main__":
     print("===" * 10)
     train_loader = javascript_dataloader(
         train_dataset, batch_size=2, shuffle=False,
-        augmentations=augmentations, sp=sp, program_mode="contrastive", label_mode="none",
+        augmentations=augmentations, sp=sp, program_mode="contrastive",
         subword_regularization_alpha=0.1)
     for X, label in train_loader:
         print("X shape:", X.shape)
@@ -234,5 +251,29 @@ if __name__ == "__main__":
         for i in [0]:
             print(f"##Transform 1: Decoded X[{i}, 0]:\n\t", sp.DecodeIds([int(id) for id in X[i, 0]]))
             print(f"##Transform 2: Decoded X[{i}, 1]:\n\t", sp.DecodeIds([int(id) for id in X[i, 1]]))
+            print()
+        break
+
+    ######### Test labeled tasks
+    sp = spm.SentencePieceProcessor()
+    sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
+    print("===" * 10)
+    print("Test identity dataloader, method name labels")
+    print("===" * 10)
+    labeled_dataset = JSONLinesDataset(train_filepath,
+                                    fields={"function": "function", "identifier": "label"},
+                                    require_fields=["identifier"], limit_size=100, subword_regularization_alpha=0.1)
+    print("Len of labeled data", len(labeled_dataset))
+    train_loader = javascript_dataloader(
+        labeled_dataset, batch_size=2, shuffle=False,
+        augmentations=[], sp=sp, program_mode="identity",
+        subword_regularization_alpha=0.1)
+    for X, label in train_loader:
+        print("X shape:", X.shape)
+        print("Label:", label)
+        for i in range(len(X)):
+            print(f"Decoded X[{i}]:", sp.DecodeIds([int(id) for id in X[i]]))
+            print(f"Decoded label[{i}]:", sp.DecodeIds([int(id) for id in label[i]]))
+            print(f"Pieces for label[{i}]:", [sp.IdToPiece(int(id)) for id in label[i]])
             print()
         break
