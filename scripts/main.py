@@ -66,7 +66,7 @@ def train(
         augmentations=augmentations, sp=sp, program_mode=program_mode,
         label_mode=label_mode, subword_regularization_alpha=subword_regularization_alpha)
 
-    model = # TODO
+    model = torch.nn.Transformer()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
@@ -83,7 +83,11 @@ def train(
         for X, _ in tqdm.tqdm(train_loader, desc=f"epoch {epoch}"):
             X = X.cuda() if use_cuda else X
             optimizer.zero_grad()
-            loss = # TODO
+            # import IPython
+            # IPython.embed()
+            # import sys
+            # sys.exit()
+            loss = None# TODO
             loss.backward()
             optimizer.step()
             scheduler.step()
