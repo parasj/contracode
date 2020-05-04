@@ -18,23 +18,27 @@ SPM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
 
 
 def train(
-    run_name: str,
-    # Data
-    train_filepath: str= CSNJS_TRAIN_FILEPATH,
-    spm_filepath: str= SPM_FILEPATH,
-    program_mode="identity",
-    label_mode="none",
-    num_workers=1,
-    limit_dataset_size=-1,
-    # Optimization
-    num_epochs: int=100,
-    save_every: int=5,
-    batch_size: int=256,
-    lr: float=8e-4,
-    # Loss
-    subword_regularization_alpha: float=0,
-    # Computational
-    use_cuda: bool=True):
+        run_name: str,
+        # Data
+        train_filepath: str = CSNJS_TRAIN_FILEPATH,
+        spm_filepath: str = SPM_FILEPATH,
+        program_mode="identity",
+        label_mode="none",
+        num_workers=1,
+        limit_dataset_size=-1,
+
+        # Optimization
+        num_epochs: int = 100,
+        save_every: int = 5,
+        batch_size: int = 256,
+        lr: float = 8e-4,
+
+        # Loss
+        subword_regularization_alpha: float = 0,
+
+        # Computational
+        use_cuda: bool = True
+):
     """Train model"""
     run_dir = RUN_DIR / run_name
     run_dir.mkdir(exist_ok=True, parents=True)
@@ -83,7 +87,7 @@ def train(
     )
 
     global_step = 0
-    for epoch in tqdm.trange(1, num_epochs+1, desc="training", unit="epoch"):
+    for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch"):
         print(f"Starting epoch {epoch}")
 
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
@@ -106,7 +110,7 @@ def train(
                 f"label-{label_mode}/program-{program_mode}/loss": loss.item()
             }, step=global_step)
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
-        
+
         if epoch % save_every == 0:
             model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             print(f"Saving checkpoint to {model_file}...", endl=" ")
@@ -120,7 +124,7 @@ def train(
             print("Done.")
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     fire.Fire({
         "train": train
     })
