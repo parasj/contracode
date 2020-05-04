@@ -18,6 +18,8 @@ from representjs.data.util import dispatch_to_node
 #   'function_tokens'
 #   'docstring' for the docstring (blank for most, filled in for about 100k)
 #   'docstring_tokens'
+from scripts.main import DATA_DIR
+
 FUNCTION_ONLY_FIELDS = {"function": "function"}
 
 
@@ -277,3 +279,5 @@ if __name__ == "__main__":
             print(f"Pieces for label[{i}]:", [sp.IdToPiece(int(id)) for id in label[i]])
             print()
         break
+CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
+SPM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")

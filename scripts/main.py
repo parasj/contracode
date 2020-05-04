@@ -1,5 +1,4 @@
 import os
-from typing import List
 
 import fire
 import sentencepiece as spm
@@ -8,24 +7,20 @@ import torch.nn.functional as F
 import tqdm
 import wandb
 
+from representjs.data.csn_js import CSNJS_TRAIN_FILEPATH, SPM_FILEPATH
+from representjs import RUN_DIR
 from representjs.data.csn_js import javascript_dataloader, JSONLinesDataset
 from representjs.models import TransformerModel
 
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
-TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
-SPM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
-
-# Constants
-ALL_RUN_DIR = "data/runs"
-
 
 def train(
     run_name: str,
     # Data
-    train_filepath: str=TRAIN_FILEPATH,
-    spm_filepath: str=SPM_FILEPATH,
+    train_filepath: str= CSNJS_TRAIN_FILEPATH,
+    spm_filepath: str= SPM_FILEPATH,
     program_mode="identity",
     label_mode="none",
     num_workers=1,
@@ -40,8 +35,8 @@ def train(
     # Computational
     use_cuda: bool=True):
     """Train model"""
-    run_dir = os.path.join(ALL_RUN_DIR, run_name)
-    os.makedirs(run_dir, exist_ok=True)
+    run_dir = RUN_DIR / run_name
+    run_dir.mkdir(exist_ok=True, parents=True)
     print(f"Saving model checkpoints to {run_dir}")
     config = locals()
     wandb.init(name=run_name, config=config, job_type="training", project="code-representation")
@@ -112,7 +107,7 @@ def train(
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
         
         if epoch % save_every == 0:
-            model_file = os.path.join(run_dir, f"ckpt_ep{epoch:04d}.pth")
+            model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             print(f"Saving checkpoint to {model_file}...", endl=" ")
             torch.save({
                 "model_state_dict": model.state_dict(),
@@ -120,7 +115,7 @@ def train(
                 "epoch": epoch,
                 "global_step": global_step,
                 "config": config
-            }, model_file)
+            }, str(model_file.resolve()))
             print("Done.")
 
 if __name__=="__main__":

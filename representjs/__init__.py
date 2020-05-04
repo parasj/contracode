@@ -5,3 +5,8 @@ def get_package_root():
 
 
 PACKAGE_ROOT = get_package_root()
+DATA_DIR = get_package_root() / "data"
+RUN_DIR = DATA_DIR / "runs"
+
+DATA_DIR.mkdir(exist_ok=True)
+RUN_DIR.mkdir(exist_ok=True)
