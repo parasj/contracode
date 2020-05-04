@@ -6,6 +6,7 @@ setup(
     packages=["representjs"],
     python_requires=">=3.7",
     install_requires=[
+        "fire",
         "graphviz",
         "jsonlines",
         "matplotlib",
@@ -19,6 +20,7 @@ setup(
         "torchtext",
         "tqdm",
         "transformers",
+        "wandb"
     ],
     extras_require={"test": ["pytest"]}
 )

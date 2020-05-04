@@ -1,12 +1,15 @@
 import os
 from typing import List
 
+import fire
 import sentencepiece as spm
 import torch
+import torch.nn.functional as F
 import tqdm
 import wandb
 
-from representjs.data.csn_js import javascript_dataloader
+from representjs.data.csn_js import javascript_dataloader, JSONLinesDataset
+from representjs.models import TransformerModel
 
 
 # Default argument values
@@ -25,6 +28,8 @@ def train(
     spm_filepath: str=SPM_FILEPATH,
     program_mode="identity",
     label_mode="none",
+    num_workers=1,
+    limit_dataset_size=-1,
     # Optimization
     num_epochs: int=100,
     save_every: int=5,
@@ -36,18 +41,22 @@ def train(
     use_cuda: bool=True):
     """Train model"""
     run_dir = os.path.join(ALL_RUN_DIR, run_name)
-    os.makedirs(run_dir)
+    os.makedirs(run_dir, exist_ok=True)
     print(f"Saving model checkpoints to {run_dir}")
     config = locals()
     wandb.init(name=run_name, config=config, job_type="training", project="code-representation")
+
+    if use_cuda:
+        assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
 
     augmentations = [{"fn": "sample_lines", "line_length_pct": 0.5}]
 
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
+    pad_id = sp.PieceToId("[PAD]")
 
     # Create dataset and dataloader
-    if label_mode == "method_name":
+    if label_mode == "identifier":
         dataset_fields = {"function": "function", "identifier": "label"}
         dataset_require_fields = ["identifier"]
     elif label_mode == "docstring":
@@ -60,13 +69,14 @@ def train(
                                      fields=dataset_fields,
                                      require_fields=dataset_require_fields,
                                      limit_size=limit_dataset_size)
-
+    print("Training dataset size:", len(train_dataset))
     train_loader = javascript_dataloader(
-        train_dataset, batch_size=batch_size, shuffle=True,
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
         augmentations=augmentations, sp=sp, program_mode=program_mode,
-        label_mode=label_mode, subword_regularization_alpha=subword_regularization_alpha)
+        subword_regularization_alpha=subword_regularization_alpha)
 
-    model = torch.nn.Transformer()
+    model = TransformerModel(ntoken=sp.GetPieceSize(), ninp=512)
+    model = model.cuda() if use_cuda else model
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
@@ -80,14 +90,15 @@ def train(
     for epoch in tqdm.trange(1, num_epochs+1, desc="training", unit="epoch"):
         print(f"Starting epoch {epoch}")
 
-        for X, _ in tqdm.tqdm(train_loader, desc=f"epoch {epoch}"):
-            X = X.cuda() if use_cuda else X
+        pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
+        for X, Y in pbar:
+            # TODO: Implement pretraining
+            if use_cuda:
+                X = X.cuda()
+                Y = Y.cuda() if Y is not None else Y
             optimizer.zero_grad()
-            # import IPython
-            # IPython.embed()
-            # import sys
-            # sys.exit()
-            loss = None# TODO
+            logits = model(X, Y, batch_first=True)
+            loss = F.cross_entropy(logits.transpose(1, 2), Y, ignore_index=pad_id)
             loss.backward()
             optimizer.step()
             scheduler.step()
@@ -96,8 +107,9 @@ def train(
             global_step += 1
             wandb.log({
                 "epoch": epoch,
-                f"pm-{program_mode}/lm-{label_mode}/loss": loss.item()
+                f"label-{label_mode}/program-{program_mode}/loss": loss.item()
             }, step=global_step)
+            pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
         
         if epoch % save_every == 0:
             model_file = os.path.join(run_dir, f"ckpt_ep{epoch:04d}.pth")
@@ -112,6 +124,6 @@ def train(
             print("Done.")
 
 if __name__=="__main__":
-    fire({
+    fire.Fire({
         "train": train
     })
