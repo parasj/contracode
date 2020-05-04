@@ -6,17 +6,19 @@ setup(
     packages=["representjs"],
     python_requires=">=3.7",
     install_requires=[
-        "transformers",
-        "torch",
-        "torchtext",
+        "graphviz",
+        "jsonlines",
+        "matplotlib",
         "numpy",
         "pandas",
-        "matplotlib",
-        "seaborn",
         "pyjsparser",
-        "graphviz",
+        "seaborn",
+        "sentencepiece",
+        "torch",
         "torchtext",
-        "jsonlines"
+        "torchtext",
+        "tqdm",
+        "transformers",
     ],
     extras_require={"test": ["pytest"]}
 )
