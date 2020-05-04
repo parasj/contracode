@@ -24,6 +24,7 @@ setup(
         "regex",
         "sacremoses",
         "wandb",
+        "loguru"
     ],
     extras_require={"test": ["pytest"]}
 )
