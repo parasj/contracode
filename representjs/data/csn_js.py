@@ -39,6 +39,8 @@ _fix_function_crop_regexes = [re.compile(r + r'(\s+|\()') for r in [
 _valid_identifier_regex = re.compile(r'^[a-zA-Z_$][0-9a-zA-Z_$]*$')
 _num_invalid_id = 0
 _num_valid_id = 0
+
+
 def _make_example(json_dict, fields, require_fields):
     if require_fields:
         for field in require_fields:
@@ -62,8 +64,10 @@ def _make_example(json_dict, fields, require_fields):
 
         # Remove function name from declaration, but leave it in the function body
         _function_name_regex = r'(function\s*)' + re.escape(json_dict['identifier'])
-        replaced_fn = re.sub(_function_name_regex, r'\1', json_dict['function'])
+        replaced_fn = re.sub(_function_name_regex, r'\1x', json_dict['function'])
         json_dict['function'] = replaced_fn
+    else:
+        json_dict['function'] = "const x = " + json_dict['function']
 
     return {out_key: json_dict[json_key] for json_key, out_key in fields.items()}
 
@@ -108,7 +112,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
         full_path = pathlib.Path(path).resolve()
         f = gzip.open(full_path, "rb") if path.endswith(".jsonl.gz") else full_path.open("r")
         reader = jsonlines.Reader(f)
-        
+
         self.examples = []
         logger.debug(f"Loading {full_path}")
         for line in tqdm.tqdm(reader, desc=full_path.name, total=limit_size if limit_size >= 0 else None):
@@ -223,88 +227,110 @@ def javascript_dataloader(*args,
             sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
     """
     assert 'collate_fn' not in kwargs
-    collate_fn = lambda batch: javascript_collate(batch, augmentations, sp, program_mode, subword_regularization_alpha, max_length)
+    collate_fn = lambda batch: javascript_collate(batch, augmentations, sp, program_mode, subword_regularization_alpha,
+                                                  max_length)
     return torch.utils.data.DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 
 if __name__ == "__main__":
-    logger.info("===" * 10)
-    logger.info("Test dataset")
-    logger.info("===" * 10)
-    data_dir = "data/codesearchnet_javascript"
-    train_filepath = os.path.join(data_dir, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
-    train_dataset = JSONLinesDataset(train_filepath, limit_size=100)
-    logger.info(f"Number of training functions: {len(train_dataset)}")
-    logger.info(f"Example {train_dataset[0]}")
-
+    logger.debug("Loading unigram encoding")
     sp = spm.SentencePieceProcessor()
     sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
-    logger.info("===" * 10)
-    logger.info("Test identity dataloader")
-    logger.info("===" * 10)
-    train_loader = javascript_dataloader(
-        train_dataset, batch_size=2, shuffle=False,
-        augmentations=[], sp=sp, program_mode="identity",
-        subword_regularization_alpha=0.1)
-    for X, label in train_loader:
-        logger.info(f"X shape: {X.shape}")
-        logger.info(f"Label: {label}")
-        for i in range(len(X)):
-            logger.info(f"Decoded X[{i}]: {sp.DecodeIds([int(id) for id in X[i]])}")
-        break
 
-    # TODO: Pass probability of applying each transform
-    # augmentations = [{"fn": "rename_variable", "prob": 0.1}]
-    # augmentations = [{"fn": "insert_var_declaration", "prob": 0.1}]
-    augmentations = [{"fn": "sample_lines", "line_length_pct": 0.5}]
-    logger.info("===" * 10)
-    logger.info("Test augmentation dataloader")
-    logger.info("===" * 10)
-    train_loader = javascript_dataloader(
-        train_dataset, batch_size=2, shuffle=False,
-        augmentations=augmentations, sp=sp, program_mode="augmentation",
-        subword_regularization_alpha=0.1)
-    for X, label in train_loader:
-        logger.info(f"X shape: {X.shape}")
-        logger.info(f"Label: {label}")
-        for i in range(len(X)):
-            logger.info(f"Decoded X[{i}]: {sp.DecodeIds([int(id) for id in X[i]])}")
-        break
+    augmentation_examples = [
+        # {'fn': 'sample_lines', 'line_length_pct': '0.5'},
+        {'fn': 'insert_var_declaration', 'prob': '1.0'}
+    ]
+    for augmentation in augmentation_examples:
+        logger.info(f"Testing augmentation {augmentation}")
+        data_dir = "data/codesearchnet_javascript"
+        train_filepath = os.path.join(data_dir, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
+        train_dataset = JSONLinesDataset(train_filepath, limit_size=5)
+        train_loader = javascript_dataloader(
+            train_dataset, batch_size=2, shuffle=False,
+            augmentations=[augmentation], sp=sp, program_mode="augmentation",
+            subword_regularization_alpha=0.1)
+        for X, label in train_loader:
+            logger.info(f"X shape: {X.shape}")
+            logger.info(f"Label: {label}")
 
-    logger.info("===" * 10)
-    logger.info("Test contrastive dataloader")
-    logger.info("===" * 10)
-    train_loader = javascript_dataloader(
-        train_dataset, batch_size=2, shuffle=False,
-        augmentations=augmentations, sp=sp, program_mode="contrastive",
-        subword_regularization_alpha=0.1)
-    for X, label in train_loader:
-        logger.info(f"X shape: {X.shape}")
-        logger.info(f"Label: {label}")
-        for i in [0]:
-            logger.info(f"##Transform 1: Decoded X[{i}, 0]:\n\t {sp.DecodeIds([int(id) for id in X[i, 0]])}")
-            logger.info(f"##Transform 2: Decoded X[{i}, 1]:\n\t {sp.DecodeIds([int(id) for id in X[i, 1]])}")
-        break
-
-    ######### Test labeled tasks
-    sp = spm.SentencePieceProcessor()
-    sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
-    logger.info("===" * 10)
-    logger.info("Test identity dataloader, method name labels")
-    logger.info("===" * 10)
-    labeled_dataset = JSONLinesDataset(train_filepath,
-                                    fields={"function": "function", "identifier": "label"},
-                                    require_fields=["identifier"], limit_size=32000, subword_regularization_alpha=0.1)
-    logger.info(f"Len of labeled data {len(labeled_dataset)}")
-    train_loader = javascript_dataloader(
-        labeled_dataset, batch_size=2, shuffle=False,
-        augmentations=[], sp=sp, program_mode="identity",
-        subword_regularization_alpha=0.1)
-    for X, label in train_loader:
-        logger.info(f"X shape: {X.shape}")
-        logger.info(f"Label: {label}")
-        for i in range(len(X)):
-            logger.info(f"Decoded X[{i}]: {sp.DecodeIds([int(id) for id in X[i]])}")
-            logger.info(f"Decoded label[{i}]: {sp.DecodeIds([int(id) for id in label[i]])}")
-            logger.info(f"Pieces for label[{i}]: {[sp.IdToPiece(int(id)) for id in label[i]]}")
-        break
+    # logger.info("===" * 10)
+    # logger.info("Test dataset")
+    # logger.info("===" * 10)
+    # data_dir = "data/codesearchnet_javascript"
+    # train_filepath = os.path.join(data_dir, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
+    # train_dataset = JSONLinesDataset(train_filepath, limit_size=100)
+    # logger.info(f"Number of training functions: {len(train_dataset)}")
+    # logger.info(f"Example {train_dataset[0]}")
+    #
+    # sp = spm.SentencePieceProcessor()
+    # sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
+    # logger.info("===" * 10)
+    # logger.info("Test identity dataloader")
+    # logger.info("===" * 10)
+    # train_loader = javascript_dataloader(
+    #     train_dataset, batch_size=2, shuffle=False,
+    #     augmentations=[], sp=sp, program_mode="identity",
+    #     subword_regularization_alpha=0.1)
+    # for X, label in train_loader:
+    #     logger.info(f"X shape: {X.shape}")
+    #     logger.info(f"Label: {label}")
+    #     for i in range(len(X)):
+    #         logger.info(f"Decoded X[{i}]: {sp.DecodeIds([int(id) for id in X[i]])}")
+    #     break
+    #
+    # # TODO: Pass probability of applying each transform
+    # # augmentations = [{"fn": "rename_variable", "prob": 0.1}]
+    # # augmentations = [{"fn": "insert_var_declaration", "prob": 0.1}]
+    # augmentations = [{"fn": "sample_lines", "line_length_pct": 0.5}]
+    # logger.info("===" * 10)
+    # logger.info("Test augmentation dataloader")
+    # logger.info("===" * 10)
+    # train_loader = javascript_dataloader(
+    #     train_dataset, batch_size=2, shuffle=False,
+    #     augmentations=augmentations, sp=sp, program_mode="augmentation",
+    #     subword_regularization_alpha=0.1)
+    # for X, label in train_loader:
+    #     logger.info(f"X shape: {X.shape}")
+    #     logger.info(f"Label: {label}")
+    #     for i in range(len(X)):
+    #         logger.info(f"Decoded X[{i}]: {sp.DecodeIds([int(id) for id in X[i]])}")
+    #     break
+    #
+    # logger.info("===" * 10)
+    # logger.info("Test contrastive dataloader")
+    # logger.info("===" * 10)
+    # train_loader = javascript_dataloader(
+    #     train_dataset, batch_size=2, shuffle=False,
+    #     augmentations=augmentations, sp=sp, program_mode="contrastive",
+    #     subword_regularization_alpha=0.1)
+    # for X, label in train_loader:
+    #     logger.info(f"X shape: {X.shape}")
+    #     logger.info(f"Label: {label}")
+    #     for i in [0]:
+    #         logger.info(f"##Transform 1: Decoded X[{i}, 0]:\n\t {sp.DecodeIds([int(id) for id in X[i, 0]])}")
+    #         logger.info(f"##Transform 2: Decoded X[{i}, 1]:\n\t {sp.DecodeIds([int(id) for id in X[i, 1]])}")
+    #     break
+    #
+    # ######### Test labeled tasks
+    # sp = spm.SentencePieceProcessor()
+    # sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
+    # logger.info("===" * 10)
+    # logger.info("Test identity dataloader, method name labels")
+    # logger.info("===" * 10)
+    # labeled_dataset = JSONLinesDataset(train_filepath,
+    #                                 fields={"function": "function", "identifier": "label"},
+    #                                 require_fields=["identifier"], limit_size=32000, subword_regularization_alpha=0.1)
+    # logger.info(f"Len of labeled data {len(labeled_dataset)}")
+    # train_loader = javascript_dataloader(
+    #     labeled_dataset, batch_size=2, shuffle=False,
+    #     augmentations=[], sp=sp, program_mode="identity",
+    #     subword_regularization_alpha=0.1)
+    # for X, label in train_loader:
+    #     logger.info(f"X shape: {X.shape}")
+    #     logger.info(f"Label: {label}")
+    #     for i in range(len(X)):
+    #         logger.info(f"Decoded X[{i}]: {sp.DecodeIds([int(id) for id in X[i]])}")
+    #         logger.info(f"Decoded label[{i}]: {sp.DecodeIds([int(id) for id in label[i]])}")
+    #         logger.info(f"Pieces for label[{i}]: {[sp.IdToPiece(int(id)) for id in label[i]]}")
+    #     break

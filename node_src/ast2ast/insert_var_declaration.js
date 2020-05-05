@@ -1,8 +1,5 @@
-const parser = require('@babel/parser').parse;
 const traverse = require('@babel/traverse').default;
-const generate = require('@babel/generator').default;
 const t = require("@babel/types");
-const prettier = require('prettier'); 
 
 /*
 Function signature for transformations:
