@@ -1,43 +1,42 @@
 import argparse
 from pathlib import Path
 import os
+from pprint import pprint
+
 from tqdm import tqdm
 
-LOCAL_JS150K = "/work/paras/data/js150k/data.tar.gz"
-REMOTE_JS150K = "https://people.eecs.berkeley.edu/~paras/datasets/js150k/data.tar.gz"
-REMOTE_CSNJS = "https://people.eecs.berkeley.edu/~paras/datasets/codesearchnet_js/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz"
-REMOTE_CSNJS_TEST = "https://people.eecs.berkeley.edu/~paras/datasets/codesearchnet_js/javascript_test_0.jsonl.gz"
-REMOTE_CSNJS_VALID = "https://people.eecs.berkeley.edu/~paras/datasets/codesearchnet_js/javascript_valid_0.jsonl.gz"
-REMOTE_CSNJS_UNIGRAMS = "https://people.eecs.berkeley.edu/~paras/datasets/codesearchnet_js/csn_unigrams_8k_9995p.tar.gz"
+REMOTE_BASE = "https://people.eecs.berkeley.edu/~paras/datasets/"
+SHARED_BASE = Path("/work/paras/data/").resolve()
+LOCAL_BASE = (Path(__file__).parent.parent / "data").resolve()
+
+def dl_cmds(dataset_path: str, extract=False):
+    remote_path = os.path.join(REMOTE_BASE, dataset_path)
+    cache_path = (SHARED_BASE / dataset_path).resolve()
+    local_path = (LOCAL_BASE / dataset_path).resolve()
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmds = []
+    if cache_path.exists():
+        cmds.append("rsync -avhW --no-compress --progress {} {}".format(cache_path, local_path))
+    else:
+        cmds.append("wget -nc -O {} {}".format(local_path, remote_path))
+    if dataset_path.endswith('.tar.gz') and extract:
+        cmds.append("(cd {} && tar -xzf {} --strip-components=1)".format(local_path.parent, local_path))
+    elif dataset_path.endswith('.gz') and extract:
+        cmds.append("gunzip -d -k {}".format(local_path))
+    return cmds
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--download-js150k", action="store_true", help="Optional, download JS150k dataset and extract")
-    args = parser.parse_args()
     cmds = []
+    # cmds.extend(dl_cmds("js150k/data.tar.gz"))
+    cmds.extend(dl_cmds("codesearchnet_js/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", True))
+    cmds.extend(dl_cmds("codesearchnet_js/javascript_test_0.jsonl.gz", True))
+    cmds.extend(dl_cmds("codesearchnet_js/javascript_valid_0.jsonl.gz", True))
+    cmds.extend(dl_cmds("codesearchnet_js/csn_unigrams_8k_9995p.tar.gz", True))
+    cmds.extend(dl_cmds("codesearchnet_js/javascript_v2_train_supervised.jsonl.gz", True))
 
-    data_dir = Path(__file__).parent.parent / "data"
-    if args.download_js150k:
-        js150k_base_dir = (data_dir / "js_150k").resolve()
-        js150k_base_dir.mkdir(exist_ok=True, parents=True)
-        local_cached_path = Path(LOCAL_JS150K)
-        if local_cached_path.exists():
-            cmds.append("rsync -avhW --no-compress --progress {} {}".format(local_cached_path, str(js150k_base_dir)))
-        else:
-            cmds.append("wget -nc -P {} {}".format(str(js150k_base_dir), REMOTE_JS150K))
-        cmds.append("(cd {} && tar -xzf {})".format(str(js150k_base_dir), str(js150k_base_dir / 'data.tar.gz')))
-
-    csn_base_dir = (data_dir / "codesearchnet_javascript").resolve()
-    csn_base_dir.mkdir(exist_ok=True, parents=True)
-    cmds.append("wget -nc -P {} {}".format(str(csn_base_dir), REMOTE_CSNJS))
-    cmds.append("gunzip -d -k {}".format(str(csn_base_dir / 'javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz')))
-    cmds.append("wget -nc -P {} {}".format(str(csn_base_dir), REMOTE_CSNJS_TEST))
-    cmds.append("gunzip -d -k {}".format(str(csn_base_dir / 'javascript_test_0.jsonl.gz')))
-    cmds.append("wget -nc -P {} {}".format(str(csn_base_dir), REMOTE_CSNJS_VALID))
-    cmds.append("gunzip -d -k {}".format(str(csn_base_dir / 'javascript_valid_0.jsonl.gz')))
-
-    cmds.append("wget -nc -P {} {}".format(str(csn_base_dir), REMOTE_CSNJS_UNIGRAMS))
-    cmds.append("(cd {} && tar -xzf {} --strip-components=1)".format(str(csn_base_dir), str(csn_base_dir / 'csn_unigrams_8k_9995p.tar.gz')))
+    print("\n".join(cmds))
 
     t = tqdm(cmds)
     for cmd in t:
