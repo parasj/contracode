@@ -1,8 +1,10 @@
 import os
 
 import fire
+from loguru import logger
 import sentencepiece as spm
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import tqdm
 import wandb
@@ -77,21 +79,25 @@ def train(
         augmentations=augmentations, sp=sp, program_mode=program_mode,
         subword_regularization_alpha=subword_regularization_alpha)
 
-    model = TransformerModel(ntoken=sp.GetPieceSize(), ninp=512)
+    model = TransformerModel(ntoken=sp.GetPieceSize(), ninp=512, dropout=0.1)
+    model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        lr,
-        epochs=num_epochs,
-        steps_per_epoch=len(train_loader),
-        pct_start=0.02,  # Warm up for 2% of the total training time
-    )
+    # scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    #     optimizer,
+    #     lr,
+    #     epochs=num_epochs,
+    #     steps_per_epoch=len(train_loader),
+    #     pct_start=0.02,  # Warm up for 2% of the total training time
+    # )
 
     global_step = 0
     for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
-        logging.info(f"Starting epoch {epoch}\n")
-        wandb.log({'epoch': epoch, 'lr': lr.get_lr()})
+        logger.info(f"Starting epoch {epoch}\n")
+        wandb.log({
+            'epoch': epoch,
+            # 'lr': scheduler.get_lr()
+        })
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
         for X, Y in pbar:
             # TODO: Implement pretraining
@@ -99,11 +105,11 @@ def train(
                 X = X.cuda()
                 Y = Y.cuda() if Y is not None else Y
             optimizer.zero_grad()
-            logits = model(X, Y, batch_first=True)
+            logits = model(X, Y, pad_id=pad_id)
             loss = F.cross_entropy(logits.transpose(1, 2), Y, ignore_index=pad_id)
             loss.backward()
             optimizer.step()
-            scheduler.step()
+            # scheduler.step()
 
             # Log loss
             global_step += 1
@@ -115,15 +121,15 @@ def train(
 
         if epoch % save_every == 0:
             model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
-            logging.info(f"Saving checkpoint to {model_file}...", endl=" ")
+            logger.info(f"Saving checkpoint to {model_file}...", endl=" ")
             torch.save({
-                "model_state_dict": model.state_dict(),
+                "model_state_dict": model.module.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "epoch": epoch,
                 "global_step": global_step,
                 "config": config
             }, str(model_file.resolve()))
-            logging.info("Done.")
+            logger.info("Done.")
 
 
 if __name__ == "__main__":

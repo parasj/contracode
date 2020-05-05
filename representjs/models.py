@@ -29,37 +29,34 @@ class PositionalEncoding(nn.Module):
 
 class TransformerModel(nn.Module):
 
-    def __init__(self, ntoken, ninp):
+    def __init__(self, ntoken, ninp, dropout=0.1):
         super(TransformerModel, self).__init__()
-        self.transformer = Transformer()
+        self.ntoken = ntoken
+        self.ninp = ninp
+        self.src_pos_encoder = PositionalEncoding(ninp, dropout, max_len=2048)
+        self.tgt_pos_encoder = PositionalEncoding(ninp, dropout, max_len=1024)
+        self.transformer = Transformer(d_model=ninp, dropout=dropout)
         self.emb = nn.Embedding(ntoken, ninp)
 
-    def forward(self, src_tok_ids, tgt_tok_ids, batch_first=False, pad_id: int=None):
+    def forward(self, src_tok_ids, tgt_tok_ids, pad_id: int):
         """
         Arguments:
-            src_tok_ids: [L, B] or [B, L] long tensor
-            tgt_tok_ids: [T, B] or [B, T] long tensor
-            batch_first: whether batch dimension is before sequence length dimension in inputs
+            src_tok_ids: [B, L] long tensor
+            tgt_tok_ids: [B, T] long tensor
             pad_id: If supplied, we generate a mask for the source and target
         """
-        src_emb = self.emb(src_tok_ids)
-        tgt_emb = self.emb(tgt_tok_ids)
-        if batch_first:
-            src_emb = torch.transpose(src_emb, 0, 1)
-            tgt_emb = torch.transpose(tgt_emb, 0, 1)
-        # TODO: Add positional embedding
+        src_emb = self.emb(src_tok_ids).transpose(0, 1) * math.sqrt(self.ninp)
+        tgt_emb = self.emb(tgt_tok_ids).transpose(0, 1) * math.sqrt(self.ninp)
+        src_emb = self.src_pos_encoder(src_emb)
+        tgt_emb = self.tgt_pos_encoder(tgt_emb)
 
-        if pad_id is not None:
-            # TODO: add src_key_padding_mask, tgt_key_padding_mask
-            raise NotImplementedError
-        output = self.transformer(src_emb, tgt_emb)
+        src_key_padding_mask = src_tok_ids == pad_id
+        tgt_key_padding_mask = tgt_tok_ids == pad_id
+        tgt_mask = self.transformer.generate_square_subsequent_mask(tgt_tok_ids.size(1)).to(src_tok_ids.device)
+        
+        output = self.transformer(src_emb, tgt_emb, tgt_mask=tgt_mask, src_key_padding_mask=src_key_padding_mask, tgt_key_padding_mask=tgt_key_padding_mask)
 
-        logits = torch.matmul(output, self.emb.weight.transpose(0, 1))
-        if batch_first:
-            logits = torch.transpose(logits, 0, 1)
-        # print("Input shapes:", src_tok_ids.shape, tgt_tok_ids.shape)
-        # print("Embedding shapes:", src_emb.shape, tgt_emb.shape)
-        # print("Output shape:", output.shape)
-        # print("Logits shape:", logits.shape)
+        logits = torch.matmul(output, self.emb.weight.transpose(0, 1))  # [T, B, ntok]
+        logits = torch.transpose(logits, 0, 1)  # [B, T, ntok]
 
         return logits
