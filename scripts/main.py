@@ -19,6 +19,14 @@ CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_non
 SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
 
 
+# def generate(
+#     model,
+#     sp: spm.SentencePieceProcessor,
+#     fn: str):
+
+
+
+
 def train(
         run_name: str,
 
@@ -105,8 +113,9 @@ def train(
                 X = X.cuda()
                 Y = Y.cuda() if Y is not None else Y
             optimizer.zero_grad()
-            logits = model(X, Y, pad_id=pad_id)
-            loss = F.cross_entropy(logits.transpose(1, 2), Y, ignore_index=pad_id)
+            # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
+            logits = model(X, Y[:, :-1], pad_id=pad_id)
+            loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
             loss.backward()
             optimizer.step()
             # scheduler.step()
