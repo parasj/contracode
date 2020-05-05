@@ -9,6 +9,7 @@ REMOTE_BASE = "https://people.eecs.berkeley.edu/~paras/datasets/"
 SHARED_BASE = Path("/work/paras/data/").resolve()
 LOCAL_BASE = (Path(__file__).parent.parent / "data").resolve()
 
+
 def dl_cmds(dataset_path: str, extract=False):
     remote_path = os.path.join(REMOTE_BASE, dataset_path)
     cache_path = (SHARED_BASE / dataset_path).resolve()
@@ -16,14 +17,15 @@ def dl_cmds(dataset_path: str, extract=False):
     local_path.parent.mkdir(parents=True, exist_ok=True)
 
     cmds = []
-    if cache_path.exists():
-        cmds.append("rsync -avhW --no-compress --progress {} {}".format(cache_path, local_path))
-    else:
-        cmds.append("wget -nc -O {} {}".format(local_path, remote_path))
-    if dataset_path.endswith('.tar.gz') and extract:
-        cmds.append("(cd {} && tar -xzf {} --strip-components=1)".format(local_path.parent, local_path))
-    elif dataset_path.endswith('.gz') and extract:
-        cmds.append("gunzip -d -k {}".format(local_path))
+    if not local_path.exists():
+        if cache_path.exists():
+            cmds.append("rsync -avhW --no-compress --progress {} {}".format(cache_path, local_path))
+        else:
+            cmds.append("wget -nc -O {} {}".format(local_path, remote_path))
+        if dataset_path.endswith('.tar.gz') and extract:
+            cmds.append("(cd {} && tar -xzf {} --strip-components=1)".format(local_path.parent, local_path))
+        elif dataset_path.endswith('.gz') and extract:
+            cmds.append("gunzip -d -k {}".format(local_path))
     return cmds
 
 
