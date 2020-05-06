@@ -41,7 +41,7 @@ _num_invalid_id = 0
 _num_valid_id = 0
 
 
-def _make_example(json_dict, fields, require_fields, src_function_key='function'):
+def _make_example(json_dict, fields, require_fields, src_function_key, src_method_name_key):
     if require_fields:
         for field in require_fields:
             if field not in json_dict or not json_dict[field]:
@@ -51,11 +51,11 @@ def _make_example(json_dict, fields, require_fields, src_function_key='function'
     for regex in _fix_function_crop_regexes:
         json_dict[src_function_key] = regex.sub(r'function\1', json_dict[src_function_key])
 
-    if 'identifier' in json_dict and json_dict['identifier']:
-        if require_fields is not None and 'identifier' in require_fields:
+    if src_method_name_key in json_dict and json_dict[src_method_name_key]:
+        if require_fields is not None and src_method_name_key in require_fields:
             # We need the identifier (method name) as a label. Filter invalid identifiers
             global _num_invalid_id, _num_valid_id
-            if _valid_identifier_regex.match(json_dict['identifier']):
+            if _valid_identifier_regex.match(json_dict[src_method_name_key]):
                 _num_valid_id += 1
             else:
                 # Skip this data point, it's not valid
@@ -63,7 +63,7 @@ def _make_example(json_dict, fields, require_fields, src_function_key='function'
                 return None
 
         # Remove function name from declaration, but leave it in the function body
-        _function_name_regex = r'(function\s*)' + re.escape(json_dict['identifier'])
+        _function_name_regex = r'(function\s*)' + re.escape(json_dict[src_method_name_key])
         replaced_fn = re.sub(_function_name_regex, r'\1x', json_dict[src_function_key])
         json_dict[src_function_key] = replaced_fn
     else:
@@ -93,7 +93,10 @@ class JSONLinesDataset(torch.utils.data.Dataset):
                  path,
                  fields=FUNCTION_ONLY_FIELDS,
                  require_fields: Optional[Iterable[str]] = None,
-                 limit_size=-1, debug_charset=False,
+                 limit_size=-1,
+                 debug_charset=False,
+                 src_function_key='function',
+                 src_method_name_key='identifier',
                  **kwargs):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
         Arguments:
@@ -113,14 +116,10 @@ class JSONLinesDataset(torch.utils.data.Dataset):
         f = gzip.open(full_path, "rb") if path.endswith(".jsonl.gz") else full_path.open("r")
         reader = jsonlines.Reader(f)
 
-        for k, v in fields.items():
-            if v == 'function':
-                src_function_key = k
-
         self.examples = []
         logger.debug(f"Loading {full_path}")
         for line in tqdm.tqdm(reader, desc=full_path.name, total=limit_size if limit_size >= 0 else None):
-            example = _make_example(line, fields, require_fields, src_function_key)
+            example = _make_example(line, fields, require_fields, src_function_key, src_method_name_key)
             if example:
                 self.examples.append(example)
                 if 'label' in example.keys():
