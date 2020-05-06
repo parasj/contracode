@@ -12,19 +12,12 @@ import wandb
 from representjs import RUN_DIR
 from representjs.data.csn_js import javascript_dataloader, JSONLinesDataset
 from representjs.models import TransformerModel
+from representjs.decode import beam_search_decode
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
 CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
-
-
-# def generate(
-#     model,
-#     sp: spm.SentencePieceProcessor,
-#     fn: str):
-
-
 
 
 def train(
