@@ -6,6 +6,7 @@ def get_package_root():
 
 PACKAGE_ROOT = get_package_root()
 DATA_DIR = get_package_root() / "data"
+CSNJS_DIR = DATA_DIR / "codesearchnet_javascript"
 RUN_DIR = DATA_DIR / "runs"
 
 DATA_DIR.mkdir(exist_ok=True)

@@ -1,16 +1,16 @@
 import gzip
 import json
-import jsonlines
-import pathlib
 import os
+import pathlib
 import re
-from typing import List, Optional, Set, Iterable
+from typing import List, Optional, Iterable
 
-from loguru import logger
+import jsonlines
 import sentencepiece as spm
 import torch
-from torch.nn.utils.rnn import pad_sequence
 import tqdm
+from loguru import logger
+from torch.nn.utils.rnn import pad_sequence
 
 from representjs.data.util import dispatch_to_node
 
