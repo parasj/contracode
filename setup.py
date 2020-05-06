@@ -6,6 +6,7 @@ setup(
     packages=["representjs"],
     python_requires=">=3.7",
     install_requires=[
+        "apex",
         "fire",
         "graphviz",
         "jsonlines",

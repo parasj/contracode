@@ -6,10 +6,7 @@ from torch.nn import Transformer
 
 
 class PositionalEncoding(nn.Module):
-    """
-    From https://pytorch.org/tutorials/beginner/transformer_tutorial.html
-    """
-
+    """From https://pytorch.org/tutorials/beginner/transformer_tutorial.html"""
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -28,7 +25,6 @@ class PositionalEncoding(nn.Module):
 
 
 class TransformerModel(nn.Module):
-
     def __init__(self, ntoken, ninp, dropout=0.1):
         super(TransformerModel, self).__init__()
         self.ntoken = ntoken
