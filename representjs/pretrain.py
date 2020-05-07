@@ -1,3 +1,5 @@
+import time
+
 import fire
 import pytorch_lightning as pl
 import sentencepiece as spm
@@ -36,6 +38,7 @@ class ContrastiveTrainer(pl.LightningModule):
         sm = self.load_sentencepiece(self.config['spm_filepath'])
         self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=sm.PieceToId("[PAD]"))
         self.config.update(self.moco_model.config)
+        self.checkpoint_dump_cb = None
 
     def forward(self, imgs_query, imgs_key):
         return self.moco_model(imgs_query, imgs_key)
@@ -48,6 +51,11 @@ class ContrastiveTrainer(pl.LightningModule):
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
         logs = {'pretrain/train_loss': loss, 'pretrain/acc@1': acc1[0],
                 'pretrain/acc@5': acc5[0], 'pretrain/queue_ptr': self.moco_model.queue_ptr}
+
+        if self.checkpoint_iter_interval is not None and batch_idx % self.checkpoint_iter_interval == 0:
+            if self.checkpoint_dump_cb is not None:
+                self.print("Logging checkpoint!")
+                self.checkpoint_dump_cb()
         return {'loss': loss, 'log': logs}
 
     @staticmethod
@@ -55,7 +63,6 @@ class ContrastiveTrainer(pl.LightningModule):
         sp = spm.SentencePieceProcessor()
         sp.Load(spm_filename)
         return sp
-
 
     def configure_optimizers(self):  # todo scheduler
         return [torch.optim.Adam(self.parameters(), lr=self.config['lr'], betas=self.config['adam_betas'],
@@ -77,7 +84,7 @@ def train_dataloader(self: pl.LightningModule):
 
 
 def fit(run_name: str, num_gpus: int = None, **kwargs):
-    run_dir = RUN_DIR / run_name
+    run_dir = RUN_DIR / "{}_{}".format(run_name, int(time.time()))
     run_dir.mkdir(parents=True, exist_ok=True)
     model = ContrastiveTrainer(**kwargs)
     wandb_logger = WandbLogger(entity="ml4code", project="code-representation", name=run_name, log_model=True)
@@ -85,6 +92,7 @@ def fit(run_name: str, num_gpus: int = None, **kwargs):
     wandb_logger.log_hyperparams(model.config)
     trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2,
                       distributed_backend=None, gpus=num_gpus, amp_level='O1', precision=16)
+    model.checkpoint_dump_cb = lambda: trainer.dump_checkpoint()
     trainer.fit(model, train_dataloader(model))
 
 
