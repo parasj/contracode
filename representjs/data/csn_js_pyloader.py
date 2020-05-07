@@ -2,8 +2,10 @@ import random
 from typing import List
 
 import torch
+import numpy as np
 from loguru import logger
 from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
 from torchtext.data import load_sp_model
 
 from data.csn_js_jsonl import JSONLinesDataset
@@ -63,24 +65,26 @@ class WindowLineCropTransform(Transform):
 
     def __call__(self, sample):
         text = sample['function']
-        lines = text.split('\n')  # skip first and last line, usually function signature
-        first_idx, last_idx = 1, len(lines) - 2
-        window_start = random.randint(first_idx, last_idx - self.window_size)
-        sample['function'] = "\n".join(lines[window_start, window_start + self.window_size])
+        lines = text.split('\n')  # skip first and last line, usually function signature    
+        first_idx, last_idx = 1, max(2, len(lines) - 1 - self.window_size)
+        window_start = np.random.randint(first_idx, last_idx)
+        window_end = min(len(lines), window_start + self.window_size)
+        sample['function'] = "\n".join(lines[window_start:window_end])
         return sample
 
 
 class CanonicalizeKeysTransform(Transform):
     """Clean extra keys from data sample"""
 
-    def __init__(self, data_key: str, label_key: str = None):
-        self.data_key = data_key
-        self.label_key = label_key
+    def __init__(self, **kwargs):
+        self.key_mapping = kwargs
 
     def __call__(self, sample):
-        out_dict = {'data': sample[self.data_key]}
-        if self.label_key is not None:
-            out_dict['label'] = sample[self.label_key]
+        out_dict = {}
+        for dest_key, source_key in self.key_mapping.items():
+            if source_key not in sample.keys():
+                logger.error("Data sample missing key {}, has {}. Destination map was {}.".format(source_key, sample.keys(), dest_key))
+            out_dict[dest_key] = sample[source_key]
         return out_dict
 
 
@@ -114,9 +118,6 @@ class AugmentedJSDataset(Dataset):
             query = self.transform(sample)
             assert 'data' in key.keys() and 'data' in query.keys()
             out_dict = {'data_key': key['data'], 'data_query': query['data']}
-            if 'label' in key.keys():
-                assert 'label' in query.keys() and query['label'] == key['label']
-                out_dict['label'] = key['label']
             return out_dict
         else:
             if self.transform is not None:
@@ -124,8 +125,24 @@ class AugmentedJSDataset(Dataset):
             return sample
 
 
-def pad_collate(batch, contrastive=False):
-    print(batch)
-    raise NotImplementedError()
-    # if contrastive:
-    #     data_key, data_query = batch['data_key'], batch['data_query']  # shape = B X H
+class PadCollateWrapper:
+    def __init__(self, contrastive=False, pad_id=None):
+        self.contrastive = contrastive
+        self.pad_id = pad_id
+    
+    def __call__(self, batch):
+        batch_size = len(batch)
+        if self.contrastive:
+            assert 'data_key' in batch[0].keys() and 'data_query' in batch[0].keys(), "Missing contrastive keys, {}".format(batch[0].keys())
+            data_key_list = [sample['data_key'] for sample in batch]
+            data_query_list = [sample['data_query'] for sample in batch]
+            data = pad_sequence(data_key_list + data_query_list, padding_value=self.pad_id, batch_first=True)  # [2B, T]
+            assert data.size(0) == 2 * batch_size
+            data = data.view(2, batch_size, data.size(-1)).transpose(0, 1).contiguous()
+            return data, None
+        else:
+            data_list = [sample['data'] for sample in batch]
+            label_list = [sample['label'] for sample in batch]
+            data = pad_sequence(data_list, padding_value=self.pad_id, batch_first=batch_first)
+            label = pad_sequence(label_list, padding_value=self.pad_id, batch_first=batch_first)
+            return data, label

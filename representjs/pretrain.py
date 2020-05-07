@@ -1,4 +1,5 @@
 import time
+import pprint
 
 import fire
 import pytorch_lightning as pl
@@ -12,10 +13,12 @@ from torch.utils.data import DataLoader
 
 from data.csn_js_jsonl import JSONLinesDataset
 from data.csn_js_pyloader import AugmentedJSDataset, ComposeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, \
-    NumericalizeTransform, pad_collate
+    NumericalizeTransform, PadCollateWrapper
 from models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
 from utils import accuracy
+
+setattr(WandbLogger, 'name', property(lambda self: self._name))
 
 CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
@@ -37,9 +40,11 @@ class ContrastiveTrainer(pl.LightningModule):
             max_length: int = 1024
     ):
         super().__init__()
-        self.config = {k: v for k, v in locals().items() if k != 'self'}
+        self.config = {k: v for k, v in locals().items() if k not in ['self', '__class__']}
+        logger.info("Running with configuration:\n{}".format(pprint.pformat(self.config)))
         sm = self.load_sentencepiece(self.config['spm_filepath'])
-        self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=sm.PieceToId("[PAD]"))
+        self.pad_id = sm.PieceToId("[PAD]") 
+        self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=self.pad_id)
         self.config.update(self.moco_model.config)
 
     def forward(self, imgs_query, imgs_key):
@@ -47,7 +52,7 @@ class ContrastiveTrainer(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         imgs, _ = batch
-        imgs_q, imgs_k = imgs[:, 0, :], imgs[:, 1, :]
+        imgs_k, imgs_q = imgs[:, 0, :], imgs[:, 1, :]
         output, target = self(imgs_q, imgs_k)
         loss = F.cross_entropy(output, target)
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -70,9 +75,11 @@ class ContrastiveTrainer(pl.LightningModule):
         jsonl_dataset = JSONLinesDataset(self.config['train_ds_path'], fields=dataset_fields,
                                          require_fields=[], limit_size=self.config['data_limit_size'])
 
-        train_dataset = AugmentedJSDataset(jsonl_dataset, self.make_transforms(), max_length=self.config['max_length'])
+        train_dataset = AugmentedJSDataset(jsonl_dataset, self.make_transforms(), contrastive=True, max_length=self.config['max_length'])
         logger.info("Training dataset size:", len(train_dataset))
-        return DataLoader(train_dataset, self.config['batch_size'], shuffle=True, collate_fn=pad_collate,
+        collate_wrapper = PadCollateWrapper(contrastive=True, pad_id=self.pad_id)
+        return DataLoader(train_dataset, self.config['batch_size'], shuffle=True,
+                          collate_fn=collate_wrapper,
                           num_workers=self.config['num_workers'])
 
     def make_transforms(self):
@@ -80,18 +87,20 @@ class ContrastiveTrainer(pl.LightningModule):
             WindowLineCropTransform(6),
             NumericalizeTransform(self.config['spm_filepath'], self.config['subword_regularization_alpha'],
                                   self.config['max_length']),
-            CanonicalizeKeysTransform('function_ids')
+            CanonicalizeKeysTransform(data='function_ids')
         ])
 
 
 def fit(run_name: str, num_gpus: int = None, **kwargs):
-    run_dir = RUN_DIR / "{}_{}".format(run_name, int(time.time()))
+    logger.info("Training model w/ {} GPUs and run name {}".format(num_gpus, run_name))
+    run_dir = (RUN_DIR / "{}_{}".format(run_name, int(time.time()))).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Saving results to {}".format(run_dir))
     model = ContrastiveTrainer(**kwargs)
-    wandb_logger = WandbLogger(entity="ml4code", project="code-representation", name=run_name, log_model=True)
+    wandb_logger = WandbLogger(name=run_name, save_dir=str(run_dir), entity="ml4code", project="code-representation", log_model=True)
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
-    trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2,
+    trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=True, track_grad_norm=2,
                       distributed_backend="ddp", gpus=num_gpus)  # amp_level='O1', precision=16
     trainer.fit(model)
 
