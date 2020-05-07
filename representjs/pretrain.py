@@ -88,7 +88,7 @@ def fit(run_name: str, num_gpus: int = None, **kwargs):
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
     trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2,
-                      distributed_backend="ddp", gpus=num_gpus, amp_level='O1', precision=16)
+                      distributed_backend="ddp", gpus=num_gpus)  # amp_level='O1', precision=16
     data_loader = train_dataloader(model)
     trainer.fit(model, data_loader)
 
