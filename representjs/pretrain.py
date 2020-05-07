@@ -91,17 +91,17 @@ class ContrastiveTrainer(pl.LightningModule):
         ])
 
 
-def fit(run_name: str, num_gpus: int = None, **kwargs):
+def fit(n_epochs: int, run_name: str, num_gpus: int = None, **kwargs):
     logger.info("Training model w/ {} GPUs and run name {}".format(num_gpus, run_name))
     run_dir = (RUN_DIR / "{}_{}".format(run_name, int(time.time()))).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Saving results to {}".format(run_dir))
-    model = ContrastiveTrainer(**kwargs)
+    model = ContrastiveTrainer(n_epochs=n_epochs, **kwargs)
     wandb_logger = WandbLogger(name=run_name, save_dir=str(run_dir), entity="ml4code", project="code-representation", log_model=True)
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
     trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=True, track_grad_norm=2,
-                      distributed_backend="ddp", gpus=num_gpus)  # amp_level='O1', precision=16
+                      distributed_backend="ddp", gpus=num_gpus, max_epochs=n_epochs)  # amp_level='O1', precision=16
     trainer.fit(model)
 
 
