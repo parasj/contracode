@@ -6,7 +6,7 @@ setup(
     packages=["representjs"],
     python_requires=">=3.7",
     install_requires=[
-        "apex",
+        "apex @ git+https://github.com/NVIDIA/apex.git#egg=apex",
         "fire",
         "graphviz",
         "jsonlines",
