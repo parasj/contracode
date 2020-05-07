@@ -33,8 +33,8 @@ class ContrastiveTrainer(pl.LightningModule):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k != 'self'}
         self.config['contrastive_augmentations'] = [{"fn": "sample_lines", "line_length_pct": 0.5}]  # todo
-        self.sm = self.load_sentencepiece(spm_filepath)
-        self.moco_model = CodeMoCo(self.sm.GetPieceSize(), pad_id=self.sm.PieceToId("[PAD]"))
+        sm = self.load_sentencepiece(self.config['spm_filepath'])
+        self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=sm.PieceToId("[PAD]"))
         self.config.update(self.moco_model.config)
 
     def forward(self, imgs_query, imgs_key):
@@ -56,6 +56,7 @@ class ContrastiveTrainer(pl.LightningModule):
         return sp
 
     def train_dataloader(self):
+        sm = self.load_sentencepiece(self.config['spm_filepath'])
         dataset_fields = {"function": "function"}
         dataset_require_fields = []
         train_dataset = JSONLinesDataset(self.config['train_ds_path'], fields=dataset_fields,
@@ -64,22 +65,23 @@ class ContrastiveTrainer(pl.LightningModule):
         train_loader = javascript_dataloader(
             train_dataset, batch_size=self.config['batch_size'], shuffle=True,
             num_workers=self.config['num_workers'],
-            augmentations=self.config['contrastive_augmentations'], sp=self.sm, program_mode='contrastive',
+            augmentations=self.config['contrastive_augmentations'], sp=sm, program_mode='contrastive',
             subword_regularization_alpha=self.config['subword_regularization_alpha'])
         return train_loader
 
     def configure_optimizers(self):  # todo scheduler
         return [torch.optim.Adam(self.parameters(), lr=self.config['lr'], betas=self.config['adam_betas'], weight_decay=self.config['weight_decay'])]
 
-    def fit(self, run_name: str):
-        run_dir = RUN_DIR / run_name
-        run_dir.mkdir(parents=True, exist_ok=True)
-        wandb_logger = WandbLogger(entity="ml4code", project="code-representation", name=run_name, log_model=True)
-        wandb_logger.watch(self, log="all")
-        wandb_logger.log_hyperparams(self.config)
-        trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2, distributed_backend='ddp')
-        trainer.fit(self)
-
+def fit(run_name: str, num_gpus: int = None, **kwargs):
+    run_dir = RUN_DIR / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    model = ContrastiveTrainer(**kwargs)
+    wandb_logger = WandbLogger(entity="ml4code", project="code-representation", name=run_name, log_model=True)
+    # wandb_logger.watch(model, log="all")
+    wandb_logger.log_hyperparams(model.config)
+    trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2, distributed_backend='ddp', gpus=num_gpus)
+    trainer.fit(model)
 
 if __name__ == "__main__":
-    fire.Fire(ContrastiveTrainer)
+    fire.Fire(fit)
+
