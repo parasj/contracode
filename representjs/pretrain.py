@@ -26,7 +26,7 @@ class ContrastiveTrainer(pl.LightningModule):
             lr: float,
             adam_betas=(0.9, 0.98),
             weight_decay: float = 0.,
-            iters_per_epoch: int = -1,
+            checkpoint_iter_interval: int = None,
             subword_regularization_alpha=0.,
             train_ds_path: str = CSNJS_TRAIN_FILEPATH,
             spm_filepath: str = SPM_UNIGRAM_FILEPATH,
@@ -38,6 +38,7 @@ class ContrastiveTrainer(pl.LightningModule):
         sm = self.load_sentencepiece(self.config['spm_filepath'])
         self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=sm.PieceToId("[PAD]"))
         self.config.update(self.moco_model.config)
+        self.checkpoint_iter_interval = checkpoint_iter_interval
         self.checkpoint_dump_cb = None
 
     def forward(self, imgs_query, imgs_key):
