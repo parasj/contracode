@@ -25,7 +25,7 @@ class CodeMoCo(MoCoTemplate):
 
 
 class CodeEncoder(nn.Module):
-    def __init__(self, n_tokens, d_model=512, d_rep=128, n_head=8, n_encoder_layers=6, d_ff=2048, dropout=0.1,
+    def __init__(self, n_tokens, d_model=512, d_rep=256, n_head=8, n_encoder_layers=6, d_ff=2048, dropout=0.1,
                  activation="relu", norm=True, pad_id=None, project=False):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k != 'self'}
@@ -39,7 +39,7 @@ class CodeEncoder(nn.Module):
         
         for p in self.parameters():
             if p.dim() > 1:
-                xavier_uniform_(p)
+                nn.init.xavier_uniform_(p)
 
     def forward(self, x):
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config['d_model'])
