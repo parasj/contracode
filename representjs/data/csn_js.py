@@ -25,12 +25,16 @@ FUNCTION_ONLY_FIELDS = {"function": "function"}
 
 _newline_regex = re.compile(r'\n')
 _whitespace_regex = re.compile(r'[ \t\n]+')
-
-
 def normalize_program(fn: str):
     fn = _newline_regex.sub(r' [EOL]', fn)
     fn = _whitespace_regex.sub(' ', fn)
     return fn
+
+
+_url_regex = re.compile(r"https?://\S+\b")
+def normalize_docstring(docstring: str):
+    # Substitute urls with [URL]
+    return _url_regex.sub("[URL]", docstring)
 
 
 _fix_function_crop_regexes = [re.compile(r + r'(\s+|\()') for r in [
@@ -68,6 +72,10 @@ def _make_example(json_dict, fields, require_fields, src_function_key, src_metho
         json_dict[src_function_key] = replaced_fn
     else:
         json_dict[src_function_key] = "const x = " + json_dict[src_function_key]
+
+    # Normalize docstring (replace URLs)
+    if "docstring" in require_fields:
+        json_dict["docstring"] = normalize_docstring(json_dict["docstring"])
 
     return {out_key: json_dict[json_key] for json_key, out_key in fields.items()}
 
