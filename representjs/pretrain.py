@@ -55,21 +55,25 @@ class ContrastiveTrainer(pl.LightningModule):
         sp.Load(spm_filename)
         return sp
 
-    def train_dataloader(self):
-        dataset_fields = {"function": "function"}
-        dataset_require_fields = []
-        train_dataset = JSONLinesDataset(self.config['train_ds_path'], fields=dataset_fields,
-                                         require_fields=dataset_require_fields, limit_size=self.config['data_limit_size'])
-        logger.info("Training dataset size:", len(train_dataset))
-        train_loader = javascript_dataloader(
-            train_dataset, batch_size=self.config['batch_size'], shuffle=True,
-            num_workers=self.config['num_workers'],
-            augmentations=self.config['contrastive_augmentations'], sp=None, spm_unigram_path=self.config['spm_filepath'],
-            program_mode='contrastive', subword_regularization_alpha=self.config['subword_regularization_alpha'])
-        return train_loader
 
     def configure_optimizers(self):  # todo scheduler
-        return [torch.optim.Adam(self.parameters(), lr=self.config['lr'], betas=self.config['adam_betas'], weight_decay=self.config['weight_decay'])]
+        return [torch.optim.Adam(self.parameters(), lr=self.config['lr'], betas=self.config['adam_betas'],
+                                 weight_decay=self.config['weight_decay'])]
+
+
+def train_dataloader(self: pl.LightningModule):
+    dataset_fields = {"function": "function"}
+    dataset_require_fields = []
+    train_dataset = JSONLinesDataset(self.config['train_ds_path'], fields=dataset_fields,
+                                     require_fields=dataset_require_fields, limit_size=self.config['data_limit_size'])
+    logger.info("Training dataset size:", len(train_dataset))
+    train_loader = javascript_dataloader(
+        train_dataset, batch_size=self.config['batch_size'], shuffle=True,
+        num_workers=self.config['num_workers'],
+        augmentations=self.config['contrastive_augmentations'], sp=None, spm_unigram_path=self.config['spm_filepath'],
+        program_mode='contrastive', subword_regularization_alpha=self.config['subword_regularization_alpha'])
+    return train_loader
+
 
 def fit(run_name: str, num_gpus: int = None, **kwargs):
     run_dir = RUN_DIR / run_name
@@ -78,9 +82,10 @@ def fit(run_name: str, num_gpus: int = None, **kwargs):
     wandb_logger = WandbLogger(entity="ml4code", project="code-representation", name=run_name, log_model=True)
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
-    trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2, distributed_backend='ddp', gpus=num_gpus)
-    trainer.fit(model)
+    trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2,
+                      distributed_backend=None, gpus=num_gpus)
+    trainer.fit(model, train_dataloader(model))
+
 
 if __name__ == "__main__":
     fire.Fire(fit)
-

@@ -150,7 +150,8 @@ def get_javascript_collate(
         sp: spm.SentencePieceProcessor,
         program_mode: str,
         subword_regularization_alpha: float,
-        max_length: int):
+        max_length: int
+):
     assert program_mode in ["contrastive", "augmentation", "identity"]
     bos_id = sp.PieceToId("<s>")
     eos_id = sp.PieceToId("</s>")
