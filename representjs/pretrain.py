@@ -46,7 +46,8 @@ class ContrastiveTrainer(pl.LightningModule):
         output, target = self(imgs_q, imgs_k)
         loss = F.cross_entropy(output, target)
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        logs = {'train_loss': loss, 'acc@1': acc1[0], 'acc@5': acc5[0]}
+        logs = {'pretrain/train_loss': loss, 'pretrain/acc@1': acc1[0],
+                'pretrain/acc@5': acc5[0], 'pretrain/queue_ptr': self.moco_model.queue_ptr}
         return {'loss': loss, 'log': logs}
 
     @staticmethod
