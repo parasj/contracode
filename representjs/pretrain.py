@@ -9,7 +9,8 @@ from loguru import logger
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
 
-from data.csn_js import JSONLinesDataset, javascript_dataloader
+from data.csn_js_loader import javascript_dataloader
+from data.csn_js_jsonl import JSONLinesDataset
 from models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
 from utils import accuracy

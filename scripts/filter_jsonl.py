@@ -14,8 +14,8 @@ import tqdm
 from loguru import logger
 import sentencepiece as spm
 
-from representjs.data.csn_js import JSONLinesDataset, normalize_program
-
+from representjs.data.csn_js_loader import normalize_program
+from data.csn_js_jsonl import JSONLinesDataset
 
 _valid_identifier_regex = re.compile(r'^[a-zA-Z_$][0-9a-zA-Z_$]*$')
 

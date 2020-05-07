@@ -10,7 +10,8 @@ import tqdm
 import wandb
 
 from representjs import RUN_DIR
-from representjs.data.csn_js import javascript_dataloader, JSONLinesDataset
+from representjs.data.csn_js_loader import javascript_dataloader
+from data.csn_js_jsonl import JSONLinesDataset
 from representjs.models import TransformerModel
 from representjs.decode import beam_search_decode
 
