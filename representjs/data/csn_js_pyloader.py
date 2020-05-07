@@ -1,6 +1,4 @@
-import os
 import random
-import threading
 from typing import List
 
 import torch
@@ -21,37 +19,26 @@ class Transform:
 
 
 class NumericalizeTransform(Transform):
-    __shared_state = {}
-
     def __init__(self, spm_unigram_path: str, subword_regularization_alpha: float = 0., max_length: int = 1024):
         self.max_length = max_length
         self.subword_regularization_alpha = subword_regularization_alpha
         self.spm_unigram_path = spm_unigram_path
-
-    @property
-    def sp_model(self):
-        if 'sp_model' not in self.__shared_state:
-            logger.info("Hydrating vocabulary on process {}, thread {}".format(os.getpid(), threading.get_ident()))
-            self.__shared_state['sp_model'] = load_sp_model(self.spm_unigram_path)
-        return self.__shared_state['sp_model']
-
-    @property
-    def bos_id(self):
-        return self.sp_model.PieceToId("<s>")
-
-    @property
-    def eos_id(self):
-            return self.sp_model.PieceToId("</s>")
-
-    @property
-    def pad_id(self):
-        return self.sp_model.PieceToId("[PAD]")
+        self.sp_model = load_sp_model(spm_unigram_path)
+        self.bos_id = self.sp_model.PieceToId("<s>")
+        self.eos_id = self.sp_model.PieceToId("</s>")
+        self.pad_id = self.sp_model.PieceToId("[PAD]")
 
     def __getstate__(self):
         return self.spm_unigram_path, self.subword_regularization_alpha, self.max_length
 
     def __setstate__(self, state):
-        (self.spm_unigram_path, self.subword_regularization_alpha, self.max_length) = state
+        with Timer() as t:
+            (self.spm_unigram_path, self.subword_regularization_alpha, self.max_length) = state
+            self.sp_model = load_sp_model(self.spm_unigram_path)
+            self.bos_id = self.sp_model.PieceToId("<s>")
+            self.eos_id = self.sp_model.PieceToId("</s>")
+            self.pad_id = self.sp_model.PieceToId("[PAD]")
+        logger.info("Hydrating vocabulary took {:.3f}s".format(t.interval))
 
     def __call__(self, sample):
         normalized_text = normalize_program(sample['function'])
@@ -96,8 +83,7 @@ class CanonicalizeKeysTransform(Transform):
         out_dict = {}
         for dest_key, source_key in self.key_mapping.items():
             if source_key not in sample.keys():
-                logger.error(
-                    "Data sample missing key {}, has {}. Destination map was {}.".format(source_key, sample.keys(), dest_key))
+                logger.error("Data sample missing key {}, has {}. Destination map was {}.".format(source_key, sample.keys(), dest_key))
             out_dict[dest_key] = sample[source_key]
         return out_dict
 
@@ -143,12 +129,11 @@ class PadCollateWrapper:
     def __init__(self, contrastive=False, pad_id=None):
         self.contrastive = contrastive
         self.pad_id = pad_id
-
+    
     def __call__(self, batch):
         batch_size = len(batch)
         if self.contrastive:
-            assert 'data_key' in batch[0].keys() and 'data_query' in batch[0].keys(), "Missing contrastive keys, {}".format(
-                batch[0].keys())
+            assert 'data_key' in batch[0].keys() and 'data_query' in batch[0].keys(), "Missing contrastive keys, {}".format(batch[0].keys())
             data_key_list = [sample['data_key'] for sample in batch]
             data_query_list = [sample['data_query'] for sample in batch]
             data = pad_sequence(data_key_list + data_query_list, padding_value=self.pad_id, batch_first=True)  # [2B, T]
