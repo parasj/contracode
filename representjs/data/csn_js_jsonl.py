@@ -103,7 +103,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
                 self.examples.append(example)
                 if 'label' in example.keys():
                     label_char_set.update(example['label'])
-                if limit_size >= 0 and len(self.examples) >= limit_size:
+                if 0 <= limit_size <= len(self.examples):
                     print()
                     logger.info(f"WARNING: Limiting dataset size to {limit_size}")
                     break

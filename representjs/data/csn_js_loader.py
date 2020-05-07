@@ -56,9 +56,7 @@ def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProce
             # Set up transformation input
             transform_payload = []
             for example in examples:
-                transform_payload.append(dict(
-                    src=example["function"],
-                    augmentations=augmentations))
+                transform_payload.append(dict(src=example["function"], augmentations=augmentations))
             if program_mode == "contrastive":
                 # Augment each input function twice
                 transform_payload = transform_payload + transform_payload
