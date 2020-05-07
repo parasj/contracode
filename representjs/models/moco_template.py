@@ -4,7 +4,7 @@ from torch import nn
 
 class MoCoTemplate(nn.Module):
     """From https://github.com/facebookresearch/moco/blob/master/moco/builder.py"""
-    def __init__(self, d_rep=128, K=65536, m=.999, T=0.07):
+    def __init__(self, d_rep=128, K=65536, m=.999, T=0.07, encoder_params={}):
         """
         d_rep: feature dimension (default: 128)
         K: queue size; number of negative keys (default: 65536)
@@ -12,13 +12,13 @@ class MoCoTemplate(nn.Module):
         T: softmax temperature (default: 0.07)
         """
         super().__init__()
-        self.config = {'moco_num_keys': K, 'moco_momentum': m, 'moco_temperature': T}
+        self.config = dict(**{'moco_num_keys': K, 'moco_momentum': m, 'moco_temperature': T}, **encoder_params)
         self.K = K
         self.m = m
         self.T = T
 
-        self.encoder_q = self.make_encoder()
-        self.encoder_k = self.make_encoder()
+        self.encoder_q = self.make_encoder(**encoder_params)
+        self.encoder_k = self.make_encoder(**encoder_params)
 
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             param_k.data.copy_(param_q.data)  # initialize
@@ -28,8 +28,32 @@ class MoCoTemplate(nn.Module):
         self.queue = nn.functional.normalize(self.queue, dim=0)
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
 
-    def make_encoder(self):
+    def make_encoder(self, **kwargs):
         raise NotImplementedError()
+
+    @torch.no_grad()
+    def _momentum_update_key_encoder(self):
+        """
+        Momentum update of the key encoder
+        """
+        for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
+            param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
+
+    @torch.no_grad()
+    def _dequeue_and_enqueue(self, keys):
+        # gather keys before updating queue
+        keys = concat_all_gather(keys)
+
+        batch_size = keys.shape[0]
+
+        ptr = int(self.queue_ptr)
+        assert self.K % batch_size == 0  # for simplicity
+
+        # replace the keys at ptr (dequeue and enqueue)
+        self.queue[:, ptr:ptr + batch_size] = keys.T
+        ptr = (ptr + batch_size) % self.K  # move pointer
+
+        self.queue_ptr[0] = ptr
 
     @torch.no_grad()
     def _batch_shuffle_ddp(self, x):

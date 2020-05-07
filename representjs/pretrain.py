@@ -10,15 +10,15 @@ from pytorch_lightning.loggers import WandbLogger
 from data.csn_js import JSONLinesDataset, javascript_dataloader
 from models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
+from utils import accuracy
 
-CSNJS_TRAIN_FILEPATH = CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz"
-SPM_UNIGRAM_FILEPATH = CSNJS_DIR / "csnjs_8k_9995p_unigram.model"
+CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
+SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram.model")
 
 
 class ContrastiveTrainer(pl.LightningModule):
     def __init__(
             self,
-            run_name: str,
             n_epochs: int,
             batch_size: int,
             lr: float,
@@ -35,20 +35,19 @@ class ContrastiveTrainer(pl.LightningModule):
         self.config['contrastive_augmentations'] = [{"fn": "sample_lines", "line_length_pct": 0.5}]  # todo
         self.sm = self.load_sentencepiece(spm_filepath)
         self.moco_model = CodeMoCo(self.sm.GetPieceSize(), pad_id=self.sm.PieceToId("[PAD]"))
-        self.config.update(self.transformer_model.config)
-        self.run_dir = RUN_DIR / run_name
-        self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.config.update(self.moco_model.config)
 
-    def forward(self, *args, **kwargs):
-        pass
+    def forward(self, imgs_query, imgs_key):
+        return self.moco_model(imgs_query, imgs_key)
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        loss = F.cross_entropy(y_hat, y)
-        tensorboard_logs = {'train_loss': loss}
-        return {'loss': loss, 'log': tensorboard_logs}
-        pass
+        imgs, _ = batch
+        imgs_q, imgs_k = imgs[:, 0, :], imgs[:, 1, :]
+        output, target = self(imgs_q, imgs_k)
+        loss = F.cross_entropy(output, target)
+        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        logs = {'train_loss': loss, 'acc@1': acc1[0], 'acc@5': acc5[0]}
+        return {'loss': loss, 'log': logs}
 
     @staticmethod
     def load_sentencepiece(spm_filename):
@@ -64,7 +63,7 @@ class ContrastiveTrainer(pl.LightningModule):
         logger.info("Training dataset size:", len(train_dataset))
         train_loader = javascript_dataloader(
             train_dataset, batch_size=self.config['batch_size'], shuffle=True,
-            num_workers=self.data_loader_params['num_workers'],
+            num_workers=self.config['num_workers'],
             augmentations=self.config['contrastive_augmentations'], sp=self.sm, program_mode='contrastive',
             subword_regularization_alpha=self.config['subword_regularization_alpha'])
         return train_loader
@@ -72,11 +71,13 @@ class ContrastiveTrainer(pl.LightningModule):
     def configure_optimizers(self):  # todo scheduler
         return [torch.optim.Adam(self.parameters(), lr=self.config['lr'], betas=self.config['adam_betas'], weight_decay=self.config['weight_decay'])]
 
-    def fit(self):
-        wandb_logger = WandbLogger(entity="ml4code", project="code-representation", name=self.run_name, log_model=True)
+    def fit(self, run_name: str):
+        run_dir = RUN_DIR / run_name
+        run_dir.mkdir(parents=True, exist_ok=True)
+        wandb_logger = WandbLogger(entity="ml4code", project="code-representation", name=run_name, log_model=True)
         wandb_logger.watch(self, log="all")
         wandb_logger.log_hyperparams(self.config)
-        trainer = Trainer(logger=wandb_logger, default_root_dir=self.run_dir, benchmark=True, track_grad_norm=2)
+        trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2, distributed_backend='ddp')
         trainer.fit(self)
 
 
