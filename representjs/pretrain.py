@@ -26,7 +26,6 @@ class ContrastiveTrainer(pl.LightningModule):
             lr: float,
             adam_betas=(0.9, 0.98),
             weight_decay: float = 0.,
-            checkpoint_iter_interval: int = -1,
             subword_regularization_alpha=0.,
             train_ds_path: str = CSNJS_TRAIN_FILEPATH,
             spm_filepath: str = SPM_UNIGRAM_FILEPATH,
@@ -41,8 +40,6 @@ class ContrastiveTrainer(pl.LightningModule):
         sm = self.load_sentencepiece(self.config['spm_filepath'])
         self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=sm.PieceToId("[PAD]"))
         self.config.update(self.moco_model.config)
-        self.checkpoint_iter_interval = checkpoint_iter_interval
-        self.checkpoint_dump_cb = None
 
     def forward(self, imgs_query, imgs_key):
         return self.moco_model(imgs_query, imgs_key)
@@ -55,11 +52,6 @@ class ContrastiveTrainer(pl.LightningModule):
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
         logs = {'pretrain/train_loss': loss, 'pretrain/acc@1': acc1[0],
                 'pretrain/acc@5': acc5[0], 'pretrain/queue_ptr': self.moco_model.queue_ptr}
-
-        if self.checkpoint_iter_interval > 0 and batch_idx % self.checkpoint_iter_interval == 0:
-            if self.checkpoint_dump_cb is not None:
-                self.print("Logging checkpoint!")
-                self.checkpoint_dump_cb()
         return {'loss': loss, 'log': logs}
 
     @staticmethod
@@ -95,9 +87,9 @@ def fit(run_name: str, num_gpus: int = None, **kwargs):
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
     trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2,
-                      distributed_backend=None, gpus=num_gpus, amp_level='O1', precision=16)
-    model.checkpoint_dump_cb = lambda: trainer.dump_checkpoint()
-    trainer.fit(model, train_dataloader(model))
+                      distributed_backend="ddp", gpus=num_gpus, amp_level='O1', precision=16)
+    data_loader = train_dataloader(model)
+    trainer.fit(model, data_loader)
 
 
 if __name__ == "__main__":
