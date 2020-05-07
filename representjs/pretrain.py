@@ -56,7 +56,6 @@ class ContrastiveTrainer(pl.LightningModule):
         return sp
 
     def train_dataloader(self):
-        sm = self.load_sentencepiece(self.config['spm_filepath'])
         dataset_fields = {"function": "function"}
         dataset_require_fields = []
         train_dataset = JSONLinesDataset(self.config['train_ds_path'], fields=dataset_fields,
@@ -65,8 +64,8 @@ class ContrastiveTrainer(pl.LightningModule):
         train_loader = javascript_dataloader(
             train_dataset, batch_size=self.config['batch_size'], shuffle=True,
             num_workers=self.config['num_workers'],
-            augmentations=self.config['contrastive_augmentations'], sp=sm, program_mode='contrastive',
-            subword_regularization_alpha=self.config['subword_regularization_alpha'])
+            augmentations=self.config['contrastive_augmentations'], sp=None, spm_unigram_path=self.config['spm_filepath'],
+            program_mode='contrastive', subword_regularization_alpha=self.config['subword_regularization_alpha'])
         return train_loader
 
     def configure_optimizers(self):  # todo scheduler

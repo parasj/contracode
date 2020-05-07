@@ -213,13 +213,15 @@ def javascript_collate(examples: List[dict],
     return (X, label)
 
 
-def javascript_dataloader(*args,
-                          augmentations: List[dict],
-                          sp: spm.SentencePieceProcessor,
-                          program_mode: str = "identity",
-                          subword_regularization_alpha: float = 0,
-                          max_length: int = 1024,
-                          **kwargs):
+def javascript_dataloader(
+        *args,
+        augmentations: List[dict],
+        sp: spm.SentencePieceProcessor,
+        program_mode: str = "identity",
+        subword_regularization_alpha: float = 0,
+        max_length: int = 1024,
+        spm_unigram_path: str = None,
+        **kwargs):
     """
     Arguments:
         program_mode
@@ -230,6 +232,9 @@ def javascript_dataloader(*args,
             sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
     """
     assert 'collate_fn' not in kwargs
+    if sp is None:
+        sp = spm.SentencePieceProcessor()
+        sp.load(spm_unigram_path)
     collate_fn = lambda batch: javascript_collate(batch, augmentations, sp, program_mode, subword_regularization_alpha,
                                                   max_length)
     return torch.utils.data.DataLoader(*args, collate_fn=collate_fn, **kwargs)
