@@ -145,72 +145,74 @@ class JSONLinesDataset(torch.utils.data.Dataset):
         return self.examples[idx]
 
 
-def javascript_collate(examples: List[dict],
-                       augmentations: List[dict],
-                       sp: spm.SentencePieceProcessor,
-                       program_mode: str,
-                       subword_regularization_alpha: float,
-                       max_length: int):
-    """Augments and batches a list of function dicts.
-
-    Arguments:
-        examples (List[dict[str, Any]]). The dicts must have key "function".
-        augmentations (List[dict]). Augmentations to apply to the functions.
-            example: [{"fn": "extract_methods"}]
-        sp (SentencePieceProcessor): For tokenizing batch elements after augmentations
-    """
+def get_javascript_collate(
+        augmentations: List[dict],
+        sp: spm.SentencePieceProcessor,
+        program_mode: str,
+        subword_regularization_alpha: float,
+        max_length: int):
     assert program_mode in ["contrastive", "augmentation", "identity"]
-    B = len(examples)
-    if program_mode in ["contrastive", "augmentation"]:
-        # Set up transformation input
-        transform_payload = []
-        for example in examples:
-            transform_payload.append(dict(
-                src=example["function"],
-                augmentations=augmentations))
-        if program_mode == "contrastive":
-            # Augment each input function twice
-            transform_payload = transform_payload + transform_payload
-        X = _augment(transform_payload)
-    else:
-        X = [prog["function"] for prog in examples]
-
-    # Normalize programs
-    X = [normalize_program(prog) for prog in X]
-
-    # Encode as ids with sentencepiece
-    if subword_regularization_alpha:
-        # using subword regularization: https://arxiv.org/pdf/1804.10959.pdf
-        # NOTE: what is the second argument here (-1)?
-        X = [sp.SampleEncodeAsIds(prog, -1, subword_regularization_alpha) for prog in X]
-    else:
-        # using the best decoding
-        X = [sp.EncodeAsIds(prog) for prog in X]
-
-    # Create padded tensor for batch, [B, T] or [2B, T]
     bos_id = sp.PieceToId("<s>")
     eos_id = sp.PieceToId("</s>")
     pad_id = sp.PieceToId("[PAD]")
-    X = [torch.tensor([bos_id] + ids[:(max_length - 2)] + [eos_id]) for ids in X]
-    X = pad_sequence(X, batch_first=True, padding_value=pad_id)
 
-    # Create padded tensor for labels (good for seq2seq tasks)
-    if "label" in examples[0]:
-        label = [sp.EncodeAsIds(ex["label"]) for ex in examples]
-        label = [torch.tensor([bos_id] + ids + [eos_id]) for ids in label]
-        label = pad_sequence(label, batch_first=True, padding_value=pad_id)
-    else:
-        label = None
+    def javascript_collate(examples: List[dict]):
+        """Augments and batches a list of function dicts.
 
-    if program_mode == "contrastive":
-        # Reshape X to [B, 2, T]
-        T = X.size(-1)
-        X = torch.reshape(X, (2, B, -1))
-        X = torch.transpose(X, 0, 1)
-        assert X.shape == (B, 2, T)
-        assert label is None, "label should be None when using contrastive program dataloader"
+        Arguments:
+            examples (List[dict[str, Any]]). The dicts must have key "function".
+            augmentations (List[dict]). Augmentations to apply to the functions.
+                example: [{"fn": "extract_methods"}]
+            sp (SentencePieceProcessor): For tokenizing batch elements after augmentations
+        """
+        B = len(examples)
+        if program_mode in ["contrastive", "augmentation"]:
+            # Set up transformation input
+            transform_payload = []
+            for example in examples:
+                transform_payload.append(dict(
+                    src=example["function"],
+                    augmentations=augmentations))
+            if program_mode == "contrastive":
+                # Augment each input function twice
+                transform_payload = transform_payload + transform_payload
+            X = _augment(transform_payload)
+        else:
+            X = [prog["function"] for prog in examples]
 
-    return (X, label)
+        # Normalize programs
+        X = [normalize_program(prog) for prog in X]
+
+        # Encode as ids with sentencepiece
+        if subword_regularization_alpha:
+            # using subword regularization: https://arxiv.org/pdf/1804.10959.pdf
+            # NOTE: what is the second argument here (-1)?
+            X = [sp.SampleEncodeAsIds(prog, -1, subword_regularization_alpha) for prog in X]
+        else:
+            # using the best decoding
+            X = [sp.EncodeAsIds(prog) for prog in X]
+
+        # Create padded tensor for batch, [B, T] or [2B, T]
+        X = [torch.tensor([bos_id] + ids[:(max_length - 2)] + [eos_id]) for ids in X]
+        X = pad_sequence(X, batch_first=True, padding_value=pad_id)
+
+        # Create padded tensor for labels (good for seq2seq tasks)
+        if "label" in examples[0]:
+            label = [sp.EncodeAsIds(ex["label"]) for ex in examples]
+            label = [torch.tensor([bos_id] + ids + [eos_id]) for ids in label]
+            label = pad_sequence(label, batch_first=True, padding_value=pad_id)
+        else:
+            label = None
+
+        if program_mode == "contrastive":
+            # Reshape X to [B, 2, T]
+            T = X.size(-1)
+            X = torch.reshape(X, (2, B, -1))
+            X = torch.transpose(X, 0, 1)
+            assert X.shape == (B, 2, T)
+            assert label is None, "label should be None when using contrastive program dataloader"
+        return (X, label)
+    return javascript_collate
 
 
 def javascript_dataloader(
@@ -235,8 +237,7 @@ def javascript_dataloader(
     if sp is None:
         sp = spm.SentencePieceProcessor()
         sp.load(spm_unigram_path)
-    collate_fn = lambda batch: javascript_collate(batch, augmentations, sp, program_mode, subword_regularization_alpha,
-                                                  max_length)
+    collate_fn = get_javascript_collate(augmentations, sp, program_mode, subword_regularization_alpha, max_length)
     return torch.utils.data.DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 
