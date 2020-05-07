@@ -8,9 +8,11 @@ import torch.nn.functional as F
 from loguru import logger
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
+from torch.utils.data import DataLoader
 
-from data.csn_js_loader import javascript_dataloader
 from data.csn_js_jsonl import JSONLinesDataset
+from data.csn_js_pyloader import AugmentedJSDataset, ComposeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, \
+    NumericalizeTransform, pad_collate
 from models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
 from utils import accuracy
@@ -31,13 +33,11 @@ class ContrastiveTrainer(pl.LightningModule):
             train_ds_path: str = CSNJS_TRAIN_FILEPATH,
             spm_filepath: str = SPM_UNIGRAM_FILEPATH,
             num_workers: int = 8,
-            data_limit_size: int = -1):
+            data_limit_size: int = -1,
+            max_length: int = 1024
+    ):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k != 'self'}
-        self.config['contrastive_augmentations'] = [
-            {"fn": "sample_lines", "line_length_pct": 0.25},
-            # {"fn": "insert_var_declaration"},
-        ]
         sm = self.load_sentencepiece(self.config['spm_filepath'])
         self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=sm.PieceToId("[PAD]"))
         self.config.update(self.moco_model.config)
@@ -65,19 +65,23 @@ class ContrastiveTrainer(pl.LightningModule):
         return [torch.optim.Adam(self.parameters(), lr=self.config['lr'], betas=self.config['adam_betas'],
                                  weight_decay=self.config['weight_decay'])]
 
+    def train_dataloader(self):
+        dataset_fields = {"function": "function"}
+        jsonl_dataset = JSONLinesDataset(self.config['train_ds_path'], fields=dataset_fields,
+                                         require_fields=[], limit_size=self.config['data_limit_size'])
 
-def train_dataloader(self: pl.LightningModule):
-    dataset_fields = {"function": "function"}
-    dataset_require_fields = []
-    train_dataset = JSONLinesDataset(self.config['train_ds_path'], fields=dataset_fields,
-                                     require_fields=dataset_require_fields, limit_size=self.config['data_limit_size'])
-    logger.info("Training dataset size:", len(train_dataset))
-    train_loader = javascript_dataloader(
-        train_dataset, batch_size=self.config['batch_size'], shuffle=True,
-        num_workers=self.config['num_workers'],
-        augmentations=self.config['contrastive_augmentations'], sp=None, spm_unigram_path=self.config['spm_filepath'],
-        program_mode='contrastive', subword_regularization_alpha=self.config['subword_regularization_alpha'])
-    return train_loader
+        train_dataset = AugmentedJSDataset(jsonl_dataset, self.make_transforms(), max_length=self.config['max_length'])
+        logger.info("Training dataset size:", len(train_dataset))
+        return DataLoader(train_dataset, self.config['batch_size'], shuffle=True, collate_fn=pad_collate,
+                          num_workers=self.config['num_workers'])
+
+    def make_transforms(self):
+        return ComposeTransform([
+            WindowLineCropTransform(6),
+            NumericalizeTransform(self.config['spm_filepath'], self.config['subword_regularization_alpha'],
+                                  self.config['max_length']),
+            CanonicalizeKeysTransform('function_ids')
+        ])
 
 
 def fit(run_name: str, num_gpus: int = None, **kwargs):
@@ -89,8 +93,7 @@ def fit(run_name: str, num_gpus: int = None, **kwargs):
     wandb_logger.log_hyperparams(model.config)
     trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2,
                       distributed_backend="ddp", gpus=num_gpus)  # amp_level='O1', precision=16
-    data_loader = train_dataloader(model)
-    trainer.fit(model, data_loader)
+    trainer.fit(model)
 
 
 if __name__ == "__main__":

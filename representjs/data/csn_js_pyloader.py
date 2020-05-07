@@ -70,8 +70,9 @@ class WindowLineCropTransform(Transform):
         return sample
 
 
-class CleanKeysTransform(Transform):
+class CanonicalizeKeysTransform(Transform):
     """Clean extra keys from data sample"""
+
     def __init__(self, data_key: str, label_key: str = None):
         self.data_key = data_key
         self.label_key = label_key
@@ -121,3 +122,10 @@ class AugmentedJSDataset(Dataset):
             if self.transform is not None:
                 sample = self.transform(sample)
             return sample
+
+
+def pad_collate(batch, contrastive=False):
+    print(batch)
+    raise NotImplementedError()
+    # if contrastive:
+    #     data_key, data_query = batch['data_key'], batch['data_query']  # shape = B X H
