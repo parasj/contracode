@@ -26,7 +26,7 @@ class ContrastiveTrainer(pl.LightningModule):
             lr: float,
             adam_betas=(0.9, 0.98),
             weight_decay: float = 0.,
-            checkpoint_iter_interval: int = None,
+            checkpoint_iter_interval: int = -1,
             subword_regularization_alpha=0.,
             train_ds_path: str = CSNJS_TRAIN_FILEPATH,
             spm_filepath: str = SPM_UNIGRAM_FILEPATH,
@@ -34,7 +34,7 @@ class ContrastiveTrainer(pl.LightningModule):
             data_limit_size: int = -1):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k != 'self'}
-        self.config['contrastive_augmentations'] = [{"fn": "sample_lines", "line_length_pct": 0.5}]  # todo
+        self.config['contrastive_augmentations'] = [{"fn": "sample_lines", "line_length_pct": 0.25}, {"fn": "insert_var_declaration"}]  # todo
         sm = self.load_sentencepiece(self.config['spm_filepath'])
         self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=sm.PieceToId("[PAD]"))
         self.config.update(self.moco_model.config)
@@ -53,7 +53,7 @@ class ContrastiveTrainer(pl.LightningModule):
         logs = {'pretrain/train_loss': loss, 'pretrain/acc@1': acc1[0],
                 'pretrain/acc@5': acc5[0], 'pretrain/queue_ptr': self.moco_model.queue_ptr}
 
-        if self.checkpoint_iter_interval is not None and batch_idx % self.checkpoint_iter_interval == 0:
+        if self.checkpoint_iter_interval > 0 and batch_idx % self.checkpoint_iter_interval == 0:
             if self.checkpoint_dump_cb is not None:
                 self.print("Logging checkpoint!")
                 self.checkpoint_dump_cb()

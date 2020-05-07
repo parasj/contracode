@@ -15,4 +15,4 @@ cd /work/paras/representjs
 pip install torch
 pip install -e .
 npm install
-python representjs/pretrain.py 20005 --n_epochs=2 --batch_size=8 --lr="1e-2" --data_limit_size=100000 --num_gpus=1 --checkpoint_iter_interval 500
+python representjs/pretrain.py 20006_pretrain_insertvardecl --n_epochs=2 --batch_size=8 --lr="1e-3" --data_limit_size=100000 --num_gpus=1 --checkpoint_iter_interval 500
