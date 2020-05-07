@@ -26,8 +26,7 @@ class CodeMoCo(MoCoTemplate):
 
 class CodeEncoder(nn.Module):
     def __init__(self, n_tokens, d_model=512, d_rep=128, n_head=8, n_encoder_layers=6, d_ff=2048, dropout=0.1,
-                 activation="relu",
-                 norm=True, pad_id=None, project=False):
+                 activation="relu", norm=True, pad_id=None, project=False):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k != 'self'}
         self.embedding = nn.Embedding(n_tokens, d_model)

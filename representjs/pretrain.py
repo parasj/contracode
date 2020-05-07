@@ -34,7 +34,10 @@ class ContrastiveTrainer(pl.LightningModule):
             data_limit_size: int = -1):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k != 'self'}
-        self.config['contrastive_augmentations'] = [{"fn": "sample_lines", "line_length_pct": 0.25}, {"fn": "insert_var_declaration"}]  # todo
+        self.config['contrastive_augmentations'] = [
+            {"fn": "sample_lines", "line_length_pct": 0.25},
+            # {"fn": "insert_var_declaration"},
+        ]
         sm = self.load_sentencepiece(self.config['spm_filepath'])
         self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=sm.PieceToId("[PAD]"))
         self.config.update(self.moco_model.config)
