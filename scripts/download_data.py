@@ -23,7 +23,7 @@ def dl_cmds(dataset_path: str, extract=False):
         else:
             cmds.append("wget -nc -O {} {}".format(local_path, remote_path))
         if dataset_path.endswith('.tar.gz') and extract:
-            cmds.append("(cd {} && tar -xzf {} --strip-components=1)".format(local_path.parent, local_path))
+            cmds.append("(cd {} && tar -xzf {})".format(local_path.parent, local_path))
         elif dataset_path.endswith('.gz') and extract:
             cmds.append("gunzip -d -k {}".format(local_path))
     return cmds

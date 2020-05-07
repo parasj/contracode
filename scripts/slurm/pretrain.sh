@@ -11,6 +11,8 @@ date;hostname;pwd
 export PATH="/data/paras/miniconda3/bin:$PATH"
 chmod 755 -R ~/slurm
 
-
-cd /data/paras/representjs
+cd /work/paras/representjs
+pip install torch
+pip install -e .
+npm install
 python representjs/pretrain.py 20005 --n_epochs=1 --batch_size=8 --lr="1e-2" --data_limit_size=1000 --num_gpus=1

@@ -17,7 +17,7 @@ from representjs.decode import beam_search_decode
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
 CSNJS_TRAIN_FILEPATH = os.path.join(DATA_DIR, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
-SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram.model")
+SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model")
 
 
 def train(

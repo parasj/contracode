@@ -13,7 +13,7 @@ from representjs import RUN_DIR, CSNJS_DIR
 from utils import accuracy
 
 CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
-SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram.model")
+SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
 
 
 class ContrastiveTrainer(pl.LightningModule):
@@ -84,7 +84,7 @@ def fit(run_name: str, num_gpus: int = None, **kwargs):
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
     trainer = Trainer(logger=wandb_logger, default_root_dir=run_dir, benchmark=True, track_grad_norm=2,
-                      distributed_backend=None, gpus=num_gpus)
+                      distributed_backend=None, gpus=num_gpus, amp_level='O1', precision=16)
     trainer.fit(model, train_dataloader(model))
 
 
