@@ -1,10 +1,9 @@
 import math
 
-from loguru import logger
 from torch import nn
 
 from representjs.models.moco_template import MoCoTemplate
-from representjs.models.positional_encoding import PositionalEncoding
+from representjs.models.transformer import PositionalEncoding
 
 
 class CodeMoCo(MoCoTemplate):

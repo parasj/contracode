@@ -7,8 +7,8 @@ import torch
 from loguru import logger
 from torch.nn.utils.rnn import pad_sequence
 
-from data.csn_js.jsonl_dataset import JSONLinesDataset
-from data.util import normalize_program
+from representjs.data.csn_js.jsonl_dataset import JSONLinesDataset
+from representjs.data.util import normalize_program
 from representjs.data.util import dispatch_to_node
 
 

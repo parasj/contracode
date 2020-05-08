@@ -5,7 +5,7 @@ import torch
 from loguru import logger
 from torchtext.data import load_sp_model
 
-from data.util import Timer, normalize_program
+from representjs.data.util import Timer, normalize_program
 
 
 class Transform:

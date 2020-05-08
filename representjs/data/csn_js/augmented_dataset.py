@@ -5,9 +5,9 @@ from loguru import logger
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 
-from data.transforms import Transform, WindowLineCropTransform, CanonicalizeKeysTransform, ComposeTransform
+from representjs.data.transforms import Transform, WindowLineCropTransform, CanonicalizeKeysTransform, ComposeTransform
 from representjs import CSNJS_DIR
-from data.csn_js.jsonl_dataset import JSONLinesDataset, get_csnjs_dataset
+from representjs.data.csn_js.jsonl_dataset import JSONLinesDataset, get_csnjs_dataset
 from representjs.pretrain import DEFAULT_CSNJS_TRAIN_FILEPATH
 
 
