@@ -56,8 +56,8 @@ class ContrastiveTrainer(pl.LightningModule):
         output, target = self(imgs_q, imgs_k)
         loss = F.cross_entropy(output, target)
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        logs = {'pretrain/train_loss': loss, 'pretrain/acc@1': acc1[0],
-                'pretrain/acc@5': acc5[0], 'pretrain/queue_ptr': self.moco_model.queue_ptr}
+        logs = {'pretrain_loss': loss, 'pretrain_acc@1': acc1[0],
+                'pretrain_acc@5': acc5[0], 'pretrain_queue_ptr': self.moco_model.queue_ptr}
         return {'loss': loss, 'log': logs}
 
     @staticmethod
@@ -80,7 +80,8 @@ class ContrastiveTrainer(pl.LightningModule):
         collate_wrapper = PadCollateWrapper(contrastive=True, pad_id=self.pad_id)
         return DataLoader(train_dataset, self.config['batch_size'], shuffle=True,
                           collate_fn=collate_wrapper,
-                          num_workers=self.config['num_workers'])
+                          num_workers=self.config['num_workers'],
+                          drop_last=True)
 
     def make_transforms(self):
         return ComposeTransform([
@@ -115,7 +116,7 @@ def fit(n_epochs: int, run_name: str, use_gpu=True, use_fp16=False, run_dir_base
         save_top_k=-1
     )
 
-    trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=False, track_grad_norm=2,
+    trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=False,
                       distributed_backend="dp", gpus=-1 if use_gpu else None, max_epochs=n_epochs, checkpoint_callback=checkpoint_callback,
                       **extra_trainer_args)
     logger.info("CUDA_DEVICE_ORDER={}".format(os.environ.get("CUDA_DEVICE_ORDER")))
