@@ -29,7 +29,7 @@ def normalize_docstring(docstring: str):
     return _url_regex.sub("[URL]", docstring)
 
 
-def _make_example(json_dict, fields, require_fields, src_function_key, src_method_name_key):
+def _fix_json_dict(json_dict, require_fields, src_function_key, src_method_name_key):
     if require_fields:
         for field in require_fields:
             if field not in json_dict or not json_dict[field]:
@@ -56,6 +56,12 @@ def _make_example(json_dict, fields, require_fields, src_function_key, src_metho
         json_dict[src_function_key] = replaced_fn
     else:
         json_dict[src_function_key] = "const x = " + json_dict[src_function_key]
+
+    return json_dict
+
+
+def _make_example(json_dict, fields, require_fields, src_function_key, src_method_name_key):
+    json_dict = _fix_json_dict(json_dict, require_fields, src_function_key, src_method_name_key)
 
     # Normalize docstring (replace URLs)
     if "docstring" in require_fields:

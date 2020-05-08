@@ -15,10 +15,59 @@ from loguru import logger
 import sentencepiece as spm
 
 from representjs.data.csn_js_loader import normalize_program, _augment
-from representjs.data.csn_js_jsonl import JSONLinesDataset
+from representjs.data.csn_js_jsonl import JSONLinesDataset, _fix_json_dict
 from representjs.data.util import dispatch_to_node
 
 _valid_identifier_regex = re.compile(r'^[a-zA-Z_$][0-9a-zA-Z_$]*$')
+
+
+def has_transform_error(json_dict):
+    # Try to parse/transform the code, and filter out if we can't
+    # Set up transformation input
+    json_dict = _fix_json_dict(json_dict, ["function"], "function", "identifier")
+
+    transform_payload = [dict(
+        src=json_dict["function"],  # TODO: this key should be "code" for supervised set
+        augmentations=[{"fn": "identity_ast2ast"}]
+    )]
+    transform_payload = json.dumps(transform_payload)
+    stdout, stderr = dispatch_to_node('transform.js', transform_payload)
+    if stderr:
+        return True, None
+    
+    return False, json_dict
+
+
+from multiprocessing import Pool
+
+
+def filter_dataset_parallel(path: str, out_path: str):
+    full_path = pathlib.Path(path).resolve()
+    read_f = gzip.open(full_path, "rb") if path.endswith(".jsonl.gz") else full_path.open("r")
+    reader = jsonlines.Reader(read_f)
+
+    full_out_path = pathlib.Path(out_path).resolve()
+    write_f = gzip.open(full_out_path, "wb") if out_path.endswith(".jsonl.gz") else full_out_path.open("w")
+    writer = jsonlines.Writer(write_f)
+    logger.debug(f"Writing output to {full_out_path}...")
+
+    examples = []
+    logger.debug(f"Loading {full_path}")
+    pool = Pool(processes=16)
+    total_lines = 0
+    num_written = 0
+    for has_error, json_dict in tqdm.tqdm(pool.imap(has_transform_error, reader, chunksize=4), desc=full_path.name):
+        total_lines += 1
+        if not has_error:
+            writer.write(json_dict)
+            num_written += 1
+
+        if total_lines % 1000 == 0:
+            logger.debug(f"Filtered jsonl to {num_written}/{total_lines}")
+    logger.debug(f"DONE: Filtered jsonl to {num_written}/{total_lines}")
+    read_f.close()
+    write_f.close()
+
 
 def filter_dataset(path: str, out_path: str, require_fields=[], exclude_transform_errors=False):
     logger.debug(f"Requiring fields {require_fields}")
@@ -44,13 +93,12 @@ def filter_dataset(path: str, out_path: str, require_fields=[], exclude_transfor
             # Set up transformation input
             transform_payload = [dict(
                 src=json_dict["function"],  # TODO: this key should be "code" for supervised set
-                augmentations=[{"fn": "rename_variable", "prob": 1.0}]
+                augmentations=[{"fn": "identity_ast2ast"}]
             )]
             transform_payload = json.dumps(transform_payload)
             stdout, stderr = dispatch_to_node('transform.js', transform_payload)
             if stderr:
                 continue
-            # X = _augment(transform_payload)
 
         examples.append(json_dict)
         if total_lines % 1 == 0:
@@ -114,5 +162,6 @@ def filter_datasets(paths, out_path: str, require_fields=[]):
 if __name__ == "__main__":
     fire.Fire({
         "filter_dataset": filter_dataset,
-        "filter_datasets": filter_datasets
+        "filter_datasets": filter_datasets,
+        "filter_dataset_parallel": filter_dataset_parallel
     })
