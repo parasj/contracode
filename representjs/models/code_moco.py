@@ -1,9 +1,10 @@
 import math
 
+from loguru import logger
 from torch import nn
 
-from models.moco_template import MoCoTemplate
-from models.transformer import PositionalEncoding
+from representjs.models.moco_template import MoCoTemplate
+from representjs.models.positional_encoding import PositionalEncoding
 
 
 class CodeMoCo(MoCoTemplate):
@@ -30,20 +31,20 @@ class CodeEncoder(nn.Module):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k != 'self'}
         self.embedding = nn.Embedding(n_tokens, d_model)
-        self.src_pos_encoder = PositionalEncoding(d_model, dropout, max_len=2048)
+        self.pos_encoder = PositionalEncoding(d_model, dropout, max_len=2048)
         norm_fn = nn.LayerNorm(d_model) if norm else None
         encoder_layer = nn.TransformerEncoderLayer(d_model, n_head, d_ff, dropout, activation)
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_encoder_layers, norm=norm_fn)
         if project:
             self.project_layer = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
-        
-        for p in self.parameters():
+
+        for p in self.encoder.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
     def forward(self, x):
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config['d_model'])
-        src_emb = self.src_pos_encoder(src_emb)
+        src_emb = self.pos_encoder(src_emb)
         if self.config['pad_id'] is not None:
             src_key_padding_mask = x == self.config['pad_id']
         else:

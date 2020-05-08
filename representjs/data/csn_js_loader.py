@@ -8,7 +8,7 @@ import torch
 from loguru import logger
 from torch.nn.utils.rnn import pad_sequence
 
-from data.csn_js_jsonl import JSONLinesDataset
+from representjs.data.csn_js_jsonl import JSONLinesDataset
 from representjs.data.util import dispatch_to_node
 
 _newline_regex = re.compile(r'\n')

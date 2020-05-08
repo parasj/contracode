@@ -38,7 +38,7 @@ def _make_example(json_dict, fields, require_fields, src_function_key, src_metho
 
     # Fix cropped "function" token at the begging of the function string
     for regex in _fix_function_crop_regexes:
-        json_dict[src_function_key] = regex.sub(r'function\1', json_dict[src_function_key])
+        json_dict[src_function_key] = regex.sub(r'function\1', json_dict[src_function_key], count=1)
 
     if src_method_name_key in json_dict and json_dict[src_method_name_key]:
         if require_fields is not None and src_method_name_key in require_fields:
@@ -53,7 +53,7 @@ def _make_example(json_dict, fields, require_fields, src_function_key, src_metho
 
         # Remove function name from declaration, but leave it in the function body
         _function_name_regex = r'(function\s*)' + re.escape(json_dict[src_method_name_key])
-        replaced_fn = re.sub(_function_name_regex, r'\1x', json_dict[src_function_key])
+        replaced_fn = re.sub(_function_name_regex, r'\1x', json_dict[src_function_key], count=1)
         json_dict[src_function_key] = replaced_fn
     else:
         json_dict[src_function_key] = "const x = " + json_dict[src_function_key]
@@ -103,7 +103,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
                 self.examples.append(example)
                 if 'label' in example.keys():
                     label_char_set.update(example['label'])
-                if 0 <= limit_size <= len(self.examples):
+                if limit_size >= 0 and len(self.examples) >= limit_size:
                     print()
                     logger.info(f"WARNING: Limiting dataset size to {limit_size}")
                     break
@@ -122,3 +122,35 @@ class JSONLinesDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.examples[idx]
+
+
+def get_csnjs_dataset(filepath, label_mode, limit_size):
+    """
+    Returns dataset for CodeSearchNet JavaScript language,
+    which contains datapoints as dicts with keys "function" and "label"
+    """
+    if label_mode == "identifier":
+        src_function_key = "code"
+        src_method_name_key = "func_name"
+        dataset_fields = {"code": "function", "func_name": "label"}
+        dataset_require_fields = ["func_name"]
+    elif label_mode == "docstring":
+        src_function_key = "code"
+        src_method_name_key = "func_name"
+        dataset_fields = {"code": "function", "docstring": "label"}
+        dataset_require_fields = ["docstring"]
+    else:
+        # Unsupervised (full) dataset has different key names
+        src_function_key = "function"
+        src_method_name_key = "identifier"
+        dataset_fields = {"function": "function"}
+        dataset_require_fields = []
+    
+
+    dataset = JSONLinesDataset(filepath,
+                              fields=dataset_fields,
+                              require_fields=dataset_require_fields,
+                              limit_size=limit_size,
+                              src_function_key=src_function_key,
+                              src_method_name_key=src_method_name_key)
+    return dataset

@@ -8,20 +8,25 @@ import tqdm
 
 def ids_to_strs(Y, sp):
     if len(Y.shape) == 1:
-        return sp.DecodeIds([int(idx) for idx in Y])
+        ids = []
+        eos_id = sp.PieceToId("</s>")
+        for idx in Y:
+            ids.append(int(idx))
+            if int(idx) == eos_id:
+                break
+        return sp.DecodeIds(ids)
     return [ids_to_strs(y, sp) for y in Y]
 
 
-def greedy_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=10, sample=True):
+def greedy_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=20, sample=True):
     # TODO: Implement constrained decoding (e.g. only alphanumeric)
     B = X.size(0)
-    pad_id = sp.PieceToId("[PAD]")
     model.eval()
     with torch.no_grad():
         Y_hat = torch.zeros(B, max_decode_len, device=X.device).long()
         Y_hat.fill_(sp.PieceToId("<s>"))
         for t in range(max_decode_len-1):
-            logits = model(X, Y_hat, pad_id)
+            logits = model(X, Y_hat)
             if sample:
                 idx_t = torch.distributions.categorical.Categorical(logits=logits[:, t, :]).sample()
             else:
@@ -33,10 +38,9 @@ def greedy_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=10, s
     return Y_hat_str
 
 
-def beam_search_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=10, k=3):
+def beam_search_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=20, k=3):
     # TODO: Implement constrained decoding (e.g. only alphanumeric)
     B = X.size(0)
-    pad_id = sp.PieceToId("[PAD]")
     bos_id = sp.PieceToId("<s>")
     V = sp.GetPieceSize()  # Size of vocab
     model.eval()
@@ -50,7 +54,7 @@ def beam_search_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=
             all_candidates = []
             # expand each current candidate
             for Y_hat, scores in sequences:
-                logits = model(X, Y_hat[:, :-1].to(X.device), pad_id)
+                logits = model(X, Y_hat[:, :-1].to(X.device))
                 logits_t = logits[:, t, :]
                 logprobs_t = F.log_softmax(logits_t, dim=-1).to(scores.device)  # [B, V] tensor
                 for j in range(V):
@@ -68,6 +72,7 @@ def beam_search_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=
             topk_Y = torch.gather(beam_Y, 1, topk_idx.unsqueeze(-1).expand(B, k, max_decode_len))
             # set beam
             sequences = [(topk_Y[:, j, :], topk_scores[:, j]) for j in range(k)]
+            # TODO: exit early if all sentences in all beam sequences contain </s>
     
     # stack sequences
     beam_Y, beam_scores = zip(*sequences)
