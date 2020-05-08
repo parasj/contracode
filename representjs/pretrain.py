@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from loguru import logger
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 
 from data.csn_js_jsonl import JSONLinesDataset
@@ -107,8 +108,16 @@ def fit(n_epochs: int, run_name: str, use_gpu=True, use_fp16=False, run_dir_base
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
 
+    checkpoint_callback = ModelCheckpoint(
+        filepath=str(run_dir) + "/weights_{epoch:04d}.ckpt",
+        verbose=True,
+        period=1,
+        save_top_k=-1
+    )
+
     trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=False, track_grad_norm=2,
-                      distributed_backend="ddp", gpus=-1 if use_gpu else None, max_epochs=n_epochs, **extra_trainer_args)
+                      distributed_backend="dp", gpus=-1 if use_gpu else None, max_epochs=n_epochs, checkpoint_callback=checkpoint_callback,
+                      **extra_trainer_args)
     logger.info("CUDA_DEVICE_ORDER={}".format(os.environ.get("CUDA_DEVICE_ORDER")))
     logger.info("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
     logger.info("trainer.is_slurm_managing_tasks = {}".format(trainer.is_slurm_managing_tasks))
