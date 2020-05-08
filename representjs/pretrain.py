@@ -37,8 +37,7 @@ class ContrastiveTrainer(pl.LightningModule):
             spm_filepath: str = SPM_UNIGRAM_FILEPATH,
             num_workers: int = 8,
             data_limit_size: int = -1,
-            max_length: int = 1024
-    ):
+            max_length: int = 1024):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k not in ['self', '__class__']}
         logger.info("Running with configuration:\n{}".format(pprint.pformat(self.config)))
@@ -87,33 +86,31 @@ class ContrastiveTrainer(pl.LightningModule):
             WindowLineCropTransform(6),
             NumericalizeTransform(self.config['spm_filepath'], self.config['subword_regularization_alpha'],
                                   self.config['max_length']),
-            CanonicalizeKeysTransform(data='function_ids')
-        ])
+            CanonicalizeKeysTransform(data='function_ids')])
 
 
-def fit(n_epochs: int, run_name: str, use_gpu = True, use_fp16 = False, run_dir_base = RUN_DIR, **kwargs):
+def fit(n_epochs: int, run_name: str, use_gpu=True, use_fp16=False, run_dir_base=RUN_DIR,
+        dataset=CSNJS_TRAIN_FILEPATH, vocab=SPM_UNIGRAM_FILEPATH, **kwargs):
     setattr(WandbLogger, 'name', property(lambda self: self._name))
-
     extra_trainer_args = dict()
     if use_fp16:
         extra_trainer_args.update(dict(amp_level='O1', precision=16))
     logger.info("Using extra training arguments for Pytorch Lightning {}".format(extra_trainer_args))
-
     logger.info("Training model with run name {}, use_gpu = {}".format(run_name, use_gpu))
-    logger.info("CUDA_DEVICE_ORDER={}".format(os.environ.get("CUDA_DEVICE_ORDER")))
-    logger.info("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
 
     run_dir = (pathlib.Path(run_dir_base) / "{}_{}".format(run_name, int(time.time()))).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Saving results to {}".format(run_dir))
     
-    model = ContrastiveTrainer(n_epochs=n_epochs, **kwargs)
+    model = ContrastiveTrainer(n_epochs=n_epochs, train_ds_path=dataset, spm_filepath=vocab, **kwargs)
     wandb_logger = WandbLogger(name=run_name, save_dir=str(run_dir), entity="ml4code", project="code-representation", log_model=True)
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
 
     trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=False, track_grad_norm=2,
                       distributed_backend="ddp", gpus=-1 if use_gpu else None, max_epochs=n_epochs, **extra_trainer_args)
+    logger.info("CUDA_DEVICE_ORDER={}".format(os.environ.get("CUDA_DEVICE_ORDER")))
+    logger.info("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
     logger.info("trainer.is_slurm_managing_tasks = {}".format(trainer.is_slurm_managing_tasks))
     
     trainer.fit(model)
