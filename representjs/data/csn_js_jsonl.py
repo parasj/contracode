@@ -8,7 +8,6 @@ import torch
 import tqdm
 from loguru import logger
 
-
 # Possible keys:
 #   'identifier' for method name which may be blank for anonymous fns
 #   'function' for the function as a string
@@ -145,12 +144,11 @@ def get_csnjs_dataset(filepath, label_mode, limit_size):
         src_method_name_key = "identifier"
         dataset_fields = {"function": "function"}
         dataset_require_fields = []
-    
 
     dataset = JSONLinesDataset(filepath,
-                              fields=dataset_fields,
-                              require_fields=dataset_require_fields,
-                              limit_size=limit_size,
-                              src_function_key=src_function_key,
-                              src_method_name_key=src_method_name_key)
+                               fields=dataset_fields,
+                               require_fields=dataset_require_fields,
+                               limit_size=limit_size,
+                               src_function_key=src_function_key,
+                               src_method_name_key=src_method_name_key)
     return dataset

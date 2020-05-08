@@ -1,5 +1,4 @@
 import pprint
-import pprint
 import random
 
 import fire

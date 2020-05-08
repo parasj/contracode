@@ -1,17 +1,17 @@
-import os
-import threading
 from typing import List
 
-import torch
 import numpy as np
+import torch
 from loguru import logger
-from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
 from torchtext.data import load_sp_model
 
-from data.csn_js_jsonl import JSONLinesDataset
+from data.csn_js_jsonl import JSONLinesDataset, get_csnjs_dataset
 from data.csn_js_loader import normalize_program
 from data.util import Timer
+from pretrain import CSNJS_TRAIN_FILEPATH, SPM_UNIGRAM_FILEPATH
+from representjs import CSNJS_DIR
 
 
 class Transform:
@@ -84,7 +84,8 @@ class CanonicalizeKeysTransform(Transform):
         out_dict = {}
         for dest_key, source_key in self.key_mapping.items():
             if source_key not in sample.keys():
-                logger.error("Data sample missing key {}, has {}. Destination map was {}.".format(source_key, sample.keys(), dest_key))
+                logger.error(
+                    "Data sample missing key {}, has {}. Destination map was {}.".format(source_key, sample.keys(), dest_key))
             out_dict[dest_key] = sample[source_key]
         return out_dict
 
@@ -127,14 +128,16 @@ class AugmentedJSDataset(Dataset):
 
 
 class PadCollateWrapper:
-    def __init__(self, contrastive=False, pad_id=None):
+    def __init__(self, contrastive=False, pad_id=None, batch_first=True):
+        self.batch_first = batch_first
         self.contrastive = contrastive
         self.pad_id = pad_id
-    
+
     def __call__(self, batch):
         batch_size = len(batch)
         if self.contrastive:
-            assert 'data_key' in batch[0].keys() and 'data_query' in batch[0].keys(), "Missing contrastive keys, {}".format(batch[0].keys())
+            assert 'data_key' in batch[0].keys() and 'data_query' in batch[0].keys(), "Missing contrastive keys, {}".format(
+                batch[0].keys())
             data_key_list = [sample['data_key'] for sample in batch]
             data_query_list = [sample['data_query'] for sample in batch]
             data = pad_sequence(data_key_list + data_query_list, padding_value=self.pad_id, batch_first=True)  # [2B, T]
@@ -144,6 +147,18 @@ class PadCollateWrapper:
         else:
             data_list = [sample['data'] for sample in batch]
             label_list = [sample['label'] for sample in batch]
-            data = pad_sequence(data_list, padding_value=self.pad_id, batch_first=batch_first)
-            label = pad_sequence(label_list, padding_value=self.pad_id, batch_first=batch_first)
+            data = pad_sequence(data_list, padding_value=self.pad_id, batch_first=self.batch_first)
+            label = pad_sequence(label_list, padding_value=self.pad_id, batch_first=self.batch_first)
             return data, label
+
+
+if __name__ == "__main__":
+    SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
+    train_dataset = get_csnjs_dataset(CSNJS_TRAIN_FILEPATH, label_mode="none", limit_size=100)
+    test_transforms = ComposeTransform([
+        WindowLineCropTransform(6),
+        NumericalizeTransform(SPM_UNIGRAM_FILEPATH, 0., 1024),
+        CanonicalizeKeysTransform(data='function_ids')])
+    augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms)
+    logger.info(f"Training dataset size: {len(train_dataset)}")
+    print(augmented_dataset[0])
