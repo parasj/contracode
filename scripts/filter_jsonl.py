@@ -14,12 +14,13 @@ import tqdm
 from loguru import logger
 import sentencepiece as spm
 
-from representjs.data.csn_js_loader import normalize_program
-from data.csn_js_jsonl import JSONLinesDataset
+from representjs.data.csn_js_loader import normalize_program, _augment
+from representjs.data.csn_js_jsonl import JSONLinesDataset
+from representjs.data.util import dispatch_to_node
 
 _valid_identifier_regex = re.compile(r'^[a-zA-Z_$][0-9a-zA-Z_$]*$')
 
-def filter_dataset(path: str, out_path: str, require_fields=[]):
+def filter_dataset(path: str, out_path: str, require_fields=[], exclude_transform_errors=False):
     logger.debug(f"Requiring fields {require_fields}")
     full_path = pathlib.Path(path).resolve()
     f = gzip.open(full_path, "rb") if path.endswith(".jsonl.gz") else full_path.open("r")
@@ -38,8 +39,21 @@ def filter_dataset(path: str, out_path: str, require_fields=[]):
         if 'identifier' in require_fields and _valid_identifier_regex.match(json_dict['identifier']) == None:
             continue
 
+        # Try to parse/transform the code, and filter out if we can't
+        if exclude_transform_errors:
+            # Set up transformation input
+            transform_payload = [dict(
+                src=json_dict["function"],  # TODO: this key should be "code" for supervised set
+                augmentations=[{"fn": "rename_variable", "prob": 1.0}]
+            )]
+            transform_payload = json.dumps(transform_payload)
+            stdout, stderr = dispatch_to_node('transform.js', transform_payload)
+            if stderr:
+                continue
+            # X = _augment(transform_payload)
+
         examples.append(json_dict)
-        if total_lines % 100000 == 0:
+        if total_lines % 1 == 0:
             logger.debug(f"Filtered jsonl to {len(examples)}/{total_lines}")
     f.close()
 
