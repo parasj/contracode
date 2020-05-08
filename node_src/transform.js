@@ -6,7 +6,7 @@ class JavascriptAugmentations {
     constructor() {  // List[string]
         // register transformations
         this.fnAstToAst = {
-            // 'rename_variable': require('./ast2ast/rename_variable.js'),
+            'rename_variable': require('./ast2ast/rename_variable.js'),
             'insert_var_declaration': require('./ast2ast/insert_var_declaration.js'),
         };
         this.fnSrcToSrc = {

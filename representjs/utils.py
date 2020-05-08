@@ -17,3 +17,8 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+
+def count_parameters(model):
+    """From https://discuss.pytorch.org/t/how-do-i-check-the-number-of-parameters-of-a-model/4325/7"""
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
