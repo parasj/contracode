@@ -6,6 +6,7 @@ Dependencies: Python 3.7, NodeJS, NPM
 $ bash download_data.sh
 $ npm install
 $ pip install -e "."
+$ npm install terser
 ```
 
 ## Example transformations / invariant coding
