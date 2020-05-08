@@ -58,17 +58,19 @@ class JavascriptAugmentations {
             const options = transformationObj['options'] || {};
             try {
                 const transformed_obj = this.transform_match_input(data, is_ast, transformation);
-                data = transformed_obj['fnTransform'](transformed_obj['data'], options);
-                is_ast = transformed_obj['produces_ast'];
+                let data_new = transformed_obj['fnTransform'](transformed_obj['data'], options);
+                const is_ast_new = transformed_obj['produces_ast'];
+                if (is_ast_new) {
+                    data_new = this.astToSrc(data);
+                }
+
+                // no exception thrown
+                data = data_new;
+                is_ast = is_ast_new;
             } catch (e) {
                 console.error("Could not transform object!", transformationObj, ", got error ", e);
             }
         }
-
-        if (is_ast) {
-            data = this.astToSrc(data);
-        }
-
         return data;
     }
 }

@@ -136,6 +136,7 @@ class AugmentedJSDataset(Dataset):
 
 
 class PadCollateWrapper:
+    """Object enables pickle versus lambda"""
     def __init__(self, contrastive=False, pad_id=None, batch_first=True):
         self.batch_first = batch_first
         self.contrastive = contrastive
@@ -164,12 +165,13 @@ if __name__ == "__main__":
     SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
     train_dataset = get_csnjs_dataset(CSNJS_TRAIN_FILEPATH, label_mode="none", limit_size=100)
     test_transforms = ComposeTransform([
-        WindowLineCropTransform(6),
+        WindowLineCropTransform(4),
         # NumericalizeTransform(SPM_UNIGRAM_FILEPATH, 0., 1024),
-        # CanonicalizeKeysTransform(data='function_ids'),
+        CanonicalizeKeysTransform(data='function'),
     ])
-    augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms)
+    augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms, contrastive=True)
     for i, data in enumerate(augmented_dataset[0:10]):
         logger.info("Program {}".format(i))
         logger.info("Got data object: \n" + pprint.pformat(data))
-        logger.debug(data['function'])
+        print()
+        print()
