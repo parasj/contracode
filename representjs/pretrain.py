@@ -1,28 +1,21 @@
-import os
-import time
-import pathlib
+import pprint
 import pprint
 import random
 
 import fire
 import numpy as np
-import pytorch_lightning as pl
 import sentencepiece as spm
 import torch
-from torch import nn
 import torch.nn.functional as F
-from loguru import logger
-from pytorch_lightning import Trainer
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
-from torch.utils.data import DataLoader
 import tqdm
 import wandb
+from loguru import logger
+from torch import nn
 
-from data.csn_js_jsonl import JSONLinesDataset, get_csnjs_dataset
+from data.csn_js_jsonl import get_csnjs_dataset
 from data.csn_js_loader import javascript_dataloader
 # from data.csn_js_pyloader import AugmentedJSDataset, ComposeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, \
-    # NumericalizeTransform, PadCollateWrapper
+# NumericalizeTransform, PadCollateWrapper
 from models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
 from utils import accuracy, count_parameters

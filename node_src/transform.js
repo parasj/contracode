@@ -55,13 +55,13 @@ class JavascriptAugmentations {
         for (const transformationObj of transformationList) {
             const transformation = transformationObj['fn'];
             const options = transformationObj['options'] || {};
-            const transformed_obj = this.transform_match_input(data, is_ast, transformation);
-            if (transformed_obj instanceof Error) {
-                return transformed_obj;
+            try {
+                const transformed_obj = this.transform_match_input(data, is_ast, transformation);
+                data = transformed_obj['fnTransform'](transformed_obj['data'], options);
+                is_ast = transformed_obj['produces_ast'];
+            } catch (e) {
+                console.error("Could not transform object!", transformationObj, ", got error ", e);
             }
-
-            data = transformed_obj['fnTransform'](transformed_obj['data'], options);
-            is_ast = transformed_obj['produces_ast'];
         }
 
         if (is_ast) {
