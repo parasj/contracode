@@ -1,8 +1,5 @@
-const parser = require('@babel/parser').parse;
 const traverse = require('@babel/traverse').default;
-const generate = require('@babel/generator').default;
 const t = require("@babel/types");
-const prettier = require('prettier');
 
 /*
 Function signature for transformations:
@@ -12,12 +9,21 @@ function(ASTNode, {prob}) -> ASTNode
 prob is the probability to replace the name with fixed name
 */
 
+function randomString(length) {
+    chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    var result = '';
+    for (var i = length; i > 0; --i) result += chars[Math.floor(Math.random() * chars.length)];
+    return result;
+}
+
 function rename_variable(ast, {prob = 0.5}) {
     traverse(ast, {
         FunctionDeclaration(path) {
             if (Math.random() < prob) {
                 var exampleState = path.node.params[0].name;
-                path.scope.rename(exampleState);
+                let len = Math.random() * 10 + 1;
+                const id = randomString(len); 
+                path.scope.rename(exampleState, id);
             }
         }
     });
