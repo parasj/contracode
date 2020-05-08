@@ -1,3 +1,4 @@
+import pprint
 from typing import List
 
 import numpy as np
@@ -7,11 +8,11 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from torchtext.data import load_sp_model
 
-from data.csn_js_jsonl import JSONLinesDataset, get_csnjs_dataset
-from data.csn_js_loader import normalize_program
-from data.util import Timer
-from pretrain import CSNJS_TRAIN_FILEPATH, SPM_UNIGRAM_FILEPATH
 from representjs import CSNJS_DIR
+from representjs.data.csn_js_jsonl import JSONLinesDataset, get_csnjs_dataset
+from representjs.data.csn_js_loader import normalize_program
+from representjs.data.util import Timer
+from representjs.pretrain import CSNJS_TRAIN_FILEPATH
 
 
 class Transform:
@@ -65,6 +66,7 @@ class WindowLineCropTransform(Transform):
         self.window_size = window_size
 
     def __call__(self, sample):
+        assert isinstance(sample, dict) and 'function' in sample, "Got bad sample in WindowLineCropTransform: " + str(sample)
         text = sample['function']
         lines = text.split('\n')  # skip first and last line, usually function signature    
         first_idx, last_idx = 1, max(2, len(lines) - 1 - self.window_size)
@@ -113,7 +115,13 @@ class AugmentedJSDataset(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        sample = self.json_dataset[idx]
+        samples = self.json_dataset[idx]
+        if isinstance(samples, list):
+            return [self.augment_element(sample) for sample in samples]
+        else:
+            return self.augment_element(samples)
+
+    def augment_element(self, sample):
         if self.contrastive:
             assert self.transform is not None, "Must specify a transformation if creating contrastive dataset"
             key = self.transform(sample)
@@ -157,8 +165,11 @@ if __name__ == "__main__":
     train_dataset = get_csnjs_dataset(CSNJS_TRAIN_FILEPATH, label_mode="none", limit_size=100)
     test_transforms = ComposeTransform([
         WindowLineCropTransform(6),
-        NumericalizeTransform(SPM_UNIGRAM_FILEPATH, 0., 1024),
-        CanonicalizeKeysTransform(data='function_ids')])
+        # NumericalizeTransform(SPM_UNIGRAM_FILEPATH, 0., 1024),
+        # CanonicalizeKeysTransform(data='function_ids'),
+    ])
     augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms)
-    logger.info(f"Training dataset size: {len(train_dataset)}")
-    print(augmented_dataset[0])
+    for i, data in enumerate(augmented_dataset[0:10]):
+        logger.info("Program {}".format(i))
+        logger.info("Got data object: \n" + pprint.pformat(data))
+        logger.debug(data['function'])
