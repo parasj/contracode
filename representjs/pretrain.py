@@ -10,11 +10,13 @@ import tqdm
 import wandb
 from loguru import logger
 from torch import nn
+from torch.utils.data import DataLoader
 
-from representjs.data.csn_js_jsonl import get_csnjs_dataset
-from representjs.data.csn_js_loader import javascript_dataloader
-from representjs.models.code_moco import CodeMoCo
+from data.csn_js_pyloader import ComposeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, NumericalizeTransform, \
+    AugmentedJSDataset, PadCollateWrapper
 from representjs import RUN_DIR, CSNJS_DIR
+from representjs.data.csn_js_jsonl import get_csnjs_dataset
+from representjs.models.code_moco import CodeMoCo
 from representjs.utils import accuracy, count_parameters
 
 CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
@@ -60,22 +62,28 @@ def pretrain(
         program_mode="identity",
         num_workers=1,
         limit_dataset_size=-1,
+        max_sequence_length=1024,
+        augment_window_crop_size=6,
 
         # Optimization
-        train_decoder_only: bool=False,
+        train_decoder_only: bool = False,
         num_epochs: int = 100,
         save_every: int = 2,
         batch_size: int = 256,
         lr: float = 8e-4,
+        adam_betas=(0.9, 0.98),
 
         # Loss
         subword_regularization_alpha: float = 0,
 
         # Computational
         use_cuda: bool = True,
-        seed: int=0
+        seed: int = 0
 ):
-    """Train model"""
+    config = locals()
+    logger.info(f"Config: {config}")
+
+    assert not use_cuda or torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -84,31 +92,23 @@ def pretrain(
     run_dir.mkdir(exist_ok=True, parents=True)
     logger.add(str((run_dir / "train.log").resolve()))
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
-    config = locals()
-    logger.info(f"Config: {config}")
-    wandb.init(name=run_name, config=config, job_type="training", project="code-representation", entity="ml4code")
-
-    if use_cuda:
-        assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
-
-    train_augmentations = [
-        # {"fn": "insert_var_declaration", "prob": 0.5},
-        # {"fn": "rename_variable", "prob": 0.5},
-        {"fn": "sample_lines", "line_length_pct": 0.75},
-    ]
+    wandb.init(name=run_name, config=config, job_type="training", project="moco-pretrain", entity="ml4code")
 
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
 
     # Create training dataset and dataloader
-    logger.info(f"Training data path {train_filepath}")
     train_dataset = get_csnjs_dataset(train_filepath, label_mode="none", limit_size=limit_dataset_size)
-    logger.info(f"Training dataset size: {len(train_dataset)}")
-    train_loader = javascript_dataloader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
-        augmentations=train_augmentations, sp=sp, program_mode=program_mode,
-        subword_regularization_alpha=subword_regularization_alpha)
+    test_transforms = ComposeTransform([
+        WindowLineCropTransform(augment_window_crop_size),
+        NumericalizeTransform(SPM_UNIGRAM_FILEPATH, subword_regularization_alpha, max_sequence_length),
+        CanonicalizeKeysTransform(data='function'),
+    ])
+    augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms, contrastive=True)
+    collate_wrapper = PadCollateWrapper(contrastive=True, pad_id=pad_id)
+    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, collate_fn=collate_wrapper, num_workers=num_workers,
+                              drop_last=True)
 
     # Create model
     model = ContrastiveTrainer(vocab_size=sp.GetPieceSize(), pad_id=pad_id)
@@ -116,7 +116,7 @@ def pretrain(
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
     params = model.decoder.parameters() if train_decoder_only else model.parameters()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=adam_betas, eps=1e-9)
 
     global_step = 0
     min_eval_loss = float("inf")
@@ -126,7 +126,6 @@ def pretrain(
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
         for batch in pbar:
             optimizer.zero_grad()
-            # NOTE: X is a [B, max_seq_len] tensor (batch first)
             train_metrics = training_step(model, batch, use_cuda=use_cuda)
             loss = train_metrics["loss"]
             loss.backward()
@@ -134,11 +133,7 @@ def pretrain(
 
             # Log loss
             global_step += 1
-            logs = train_metrics["log"]
-            logs.update({
-                "epoch": epoch,
-            })
-            wandb.log(logs, step=global_step)
+            wandb.log(dict(epoch=epoch, **train_metrics["log"]), step=global_step)
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
         # Save checkpoint
@@ -157,6 +152,4 @@ def pretrain(
 
 
 if __name__ == "__main__":
-    fire.Fire({
-        "pretrain": pretrain
-    })
+    fire.Fire(pretrain)

@@ -124,8 +124,8 @@ class AugmentedJSDataset(Dataset):
     def augment_element(self, sample):
         if self.contrastive:
             assert self.transform is not None, "Must specify a transformation if creating contrastive dataset"
-            key = self.transform(sample)
-            query = self.transform(sample)
+            key = self.transform(sample.copy())
+            query = self.transform(sample.copy())
             assert 'data' in key.keys() and 'data' in query.keys()
             out_dict = {'data_key': key['data'], 'data_query': query['data']}
             return out_dict
@@ -165,7 +165,7 @@ if __name__ == "__main__":
     SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
     train_dataset = get_csnjs_dataset(CSNJS_TRAIN_FILEPATH, label_mode="none", limit_size=100)
     test_transforms = ComposeTransform([
-        WindowLineCropTransform(4),
+        WindowLineCropTransform(6),
         # NumericalizeTransform(SPM_UNIGRAM_FILEPATH, 0., 1024),
         CanonicalizeKeysTransform(data='function'),
     ])
