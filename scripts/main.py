@@ -80,6 +80,9 @@ def train(
         num_workers=1,
         limit_dataset_size=-1,
 
+        # Model
+        n_decoder_layers=4,
+
         # Optimization
         train_decoder_only: bool=False,
         num_epochs: int = 100,
@@ -140,7 +143,7 @@ def train(
         augmentations=eval_augmentations, sp=sp, program_mode=eval_program_mode,
         subword_regularization_alpha=subword_regularization_alpha)
 
-    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"))
+    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
     # model = TransformerModel(ntoken=sp.GetPieceSize(), ninp=512, pad_id=sp.PieceToId("[PAD]"))
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
     model = nn.DataParallel(model)

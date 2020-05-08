@@ -92,9 +92,9 @@ def pretrain(
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
 
     train_augmentations = [
-        {"fn": "insert_var_declaration", "prob": 0.5},
-        {"fn": "rename_variable", "prob": 0.5},
-        {"fn": "sample_lines", "line_length_pct": 0.5},
+        # {"fn": "insert_var_declaration", "prob": 0.5},
+        # {"fn": "rename_variable", "prob": 0.5},
+        {"fn": "sample_lines", "line_length_pct": 0.75},
     ]
 
     sp = spm.SentencePieceProcessor()

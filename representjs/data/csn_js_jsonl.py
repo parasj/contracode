@@ -63,6 +63,9 @@ def _fix_json_dict(json_dict, require_fields, src_function_key, src_method_name_
 def _make_example(json_dict, fields, require_fields, src_function_key, src_method_name_key):
     json_dict = _fix_json_dict(json_dict, require_fields, src_function_key, src_method_name_key)
 
+    if json_dict is None:
+        return None
+
     # Normalize docstring (replace URLs)
     if "docstring" in require_fields:
         json_dict["docstring"] = normalize_docstring(json_dict["docstring"])

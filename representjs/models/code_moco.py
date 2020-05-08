@@ -38,9 +38,7 @@ class CodeEncoder(nn.Module):
         if project:
             self.project_layer = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
 
-        for p in self.encoder.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
+        # NOTE: We use the default PyTorch intialization, so no need to reset parameters.
 
     def forward(self, x):
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config['d_model'])
