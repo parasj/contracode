@@ -6,7 +6,7 @@ setup(
     packages=["representjs"],
     python_requires=">=3.7",
     install_requires=[
-        "apex @ git+https://github.com/NVIDIA/apex.git#egg=apex",
+        # "apex @ git+https://github.com/NVIDIA/apex.git#egg=apex"  # apex does not encode dependency on torch
         "fire",
         "graphviz",
         "jsonlines",

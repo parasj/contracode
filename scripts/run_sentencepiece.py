@@ -11,7 +11,8 @@ import sentencepiece as spm
 import torch
 import tqdm
 
-from representjs.data.csn_js import JSONLinesDataset, normalize_program, normalize_docstring
+from representjs.data.csn_js_loader import normalize_program
+from data.csn_js_jsonl import JSONLinesDataset, normalize_docstring
 
 DEFAULT_INPUT = "data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl"
 DEFAULT_OUTPUT = "data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.txt"
