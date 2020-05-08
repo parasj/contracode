@@ -1,6 +1,7 @@
-import time
-import pprint
 import os
+import time
+import pathlib
+import pprint
 
 import fire
 import pytorch_lightning as pl
@@ -18,9 +19,6 @@ from data.csn_js_pyloader import AugmentedJSDataset, ComposeTransform, WindowLin
 from models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
 from utils import accuracy
-
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID" 
-setattr(WandbLogger, 'name', property(lambda self: self._name))
 
 CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
@@ -93,21 +91,31 @@ class ContrastiveTrainer(pl.LightningModule):
         ])
 
 
-def fit(n_epochs: int, run_name: str, use_gpu: bool = True, **kwargs):
-    logger.info("Training model with run name {}".format(run_name))
-    if use_gpu:
-        logger.info("CUDA_DEVICE_ORDER={}".format(os.environ["CUDA_DEVICE_ORDER"]))
-        logger.info("CUDA_VISIBLE_DEVICES={}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
-    run_dir = (RUN_DIR / "{}_{}".format(run_name, int(time.time()))).resolve()
+def fit(n_epochs: int, run_name: str, use_gpu = True, use_fp16 = False, run_dir_base = RUN_DIR, **kwargs):
+    setattr(WandbLogger, 'name', property(lambda self: self._name))
+
+    extra_trainer_args = dict()
+    if use_fp16:
+        extra_trainer_args.update(dict(amp_level='O1', precision=16))
+    logger.info("Using extra training arguments for Pytorch Lightning {}".format(extra_trainer_args))
+
+    logger.info("Training model with run name {}, use_gpu = {}".format(run_name, use_gpu))
+    logger.info("CUDA_DEVICE_ORDER={}".format(os.environ.get("CUDA_DEVICE_ORDER")))
+    logger.info("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
+
+    run_dir = (pathlib.Path(run_dir_base) / "{}_{}".format(run_name, int(time.time()))).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Saving results to {}".format(run_dir))
+    
     model = ContrastiveTrainer(n_epochs=n_epochs, **kwargs)
     wandb_logger = WandbLogger(name=run_name, save_dir=str(run_dir), entity="ml4code", project="code-representation", log_model=True)
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
-    trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=True, track_grad_norm=2,
-                      distributed_backend="ddp", gpus=-1 if use_gpu else None, max_epochs=n_epochs)
-    # amp_level='O1', precision=16
+
+    trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=False, track_grad_norm=2,
+                      distributed_backend="ddp", gpus=-1 if use_gpu else None, max_epochs=n_epochs, **extra_trainer_args)
+    logger.info("trainer.is_slurm_managing_tasks = {}".format(trainer.is_slurm_managing_tasks))
+    
     trainer.fit(model)
 
 
