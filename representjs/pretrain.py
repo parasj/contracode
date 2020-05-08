@@ -11,13 +11,11 @@ import wandb
 from loguru import logger
 from torch import nn
 
-from data.csn_js_jsonl import get_csnjs_dataset
-from data.csn_js_loader import javascript_dataloader
-# from data.csn_js_pyloader import AugmentedJSDataset, ComposeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, \
-# NumericalizeTransform, PadCollateWrapper
-from models.code_moco import CodeMoCo
+from representjs.data.csn_js_jsonl import get_csnjs_dataset
+from representjs.data.csn_js_loader import javascript_dataloader
+from representjs.models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
-from utils import accuracy, count_parameters
+from representjs.utils import accuracy, count_parameters
 
 CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
