@@ -40,17 +40,18 @@ class ContrastiveTrainer(nn.Module):
     def forward(self, imgs_query, imgs_key):
         return self.moco_model(imgs_query, imgs_key)
 
-    def training_step(self, batch, batch_idx=None, use_cuda=False):
-        imgs, _ = batch
-        if use_cuda:
-            imgs = imgs.cuda()
-        imgs_k, imgs_q = imgs[:, 0, :], imgs[:, 1, :]
-        output, target = self(imgs_q, imgs_k)
-        loss = F.cross_entropy(output, target)
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        logs = {'pretrain/loss': loss.item(), 'pretrain/acc@1': acc1[0].item(),
-                'pretrain/acc@5': acc5[0].item(), 'pretrain/queue_ptr': self.moco_model.queue_ptr.item()}
-        return {'loss': loss, 'log': logs}
+
+def training_step(model, batch, use_cuda=False):
+    imgs, _ = batch
+    if use_cuda:
+        imgs = imgs.cuda()
+    imgs_k, imgs_q = imgs[:, 0, :], imgs[:, 1, :]
+    output, target = model(imgs_q, imgs_k)
+    loss = F.cross_entropy(output, target)
+    acc1, acc5 = accuracy(output, target, topk=(1, 5))
+    logs = {'pretrain/loss': loss.item(), 'pretrain/acc@1': acc1[0].item(),
+            'pretrain/acc@5': acc5[0].item(), 'pretrain/queue_ptr': model.module.moco_model.queue_ptr.item()}
+    return {'loss': loss, 'log': logs}
 
 
 def pretrain(
@@ -94,9 +95,9 @@ def pretrain(
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
 
     train_augmentations = [
-        {"fn": "sample_lines", "line_length_pct": 0.5},
         {"fn": "insert_var_declaration", "prob": 0.5},
-        {"fn": "rename_variable", "prob": 0.5}
+        {"fn": "rename_variable", "prob": 0.5},
+        {"fn": "sample_lines", "line_length_pct": 0.5},
     ]
 
     sp = spm.SentencePieceProcessor()
@@ -129,14 +130,14 @@ def pretrain(
         for batch in pbar:
             optimizer.zero_grad()
             # NOTE: X is a [B, max_seq_len] tensor (batch first)
-            train_metrics = model.training_step(batch, use_cuda=use_cuda)
+            train_metrics = training_step(model, batch, use_cuda=use_cuda)
             loss = train_metrics["loss"]
             loss.backward()
             optimizer.step()
 
             # Log loss
             global_step += 1
-            logs = train_metrics["logs"]
+            logs = train_metrics["log"]
             logs.update({
                 "epoch": epoch,
             })
