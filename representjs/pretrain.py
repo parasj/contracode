@@ -1,4 +1,4 @@
-import pprint
+import os
 import random
 
 import fire
@@ -19,25 +19,8 @@ from representjs.data.csn_js_jsonl import get_csnjs_dataset
 from representjs.models.code_moco import CodeMoCo
 from representjs.utils import accuracy, count_parameters
 
-CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
-SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
-
-
-class ContrastiveTrainer(nn.Module):
-    def __init__(
-            self,
-            vocab_size: int,
-            pad_id: int):
-        super().__init__()
-        self.config = {k: v for k, v in locals().items() if k not in ['self', '__class__']}
-        logger.info("Running with configuration:\n{}".format(pprint.pformat(self.config)))
-        assert pad_id is not None
-        self.pad_id = pad_id
-        self.moco_model = CodeMoCo(vocab_size, pad_id=self.pad_id)
-        self.config.update(self.moco_model.config)
-
-    def forward(self, imgs_query, imgs_key):
-        return self.moco_model(imgs_query, imgs_key)
+DEFAULT_CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
+DEFAULT_SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
 
 
 def training_step(model, batch, use_cuda=False):
@@ -57,8 +40,8 @@ def pretrain(
         run_name: str,
 
         # Data
-        train_filepath: str = CSNJS_TRAIN_FILEPATH,
-        spm_filepath: str = SPM_UNIGRAM_FILEPATH,
+        train_filepath: str = DEFAULT_CSNJS_TRAIN_FILEPATH,
+        spm_filepath: str = DEFAULT_SPM_UNIGRAM_FILEPATH,
         program_mode="identity",
         num_workers=1,
         limit_dataset_size=-1,
@@ -81,7 +64,8 @@ def pretrain(
         seed: int = 0
 ):
     config = locals()
-    logger.info(f"Config: {config}")
+    logger.info("Training configuration: {}".format(config))
+    logger.info("CUDA_VISIBLE_DEVICES = '{}', CUDA_DEVICE_ORDER = '{}'".format(os.environ.get('CUDA_VISIBLE_DEVICES'), os.environ.get('CUDA_DEVICE_ORDER')))
 
     assert not use_cuda or torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
     torch.manual_seed(seed)
@@ -102,7 +86,7 @@ def pretrain(
     train_dataset = get_csnjs_dataset(train_filepath, label_mode="none", limit_size=limit_dataset_size)
     test_transforms = ComposeTransform([
         WindowLineCropTransform(augment_window_crop_size),
-        NumericalizeTransform(SPM_UNIGRAM_FILEPATH, subword_regularization_alpha, max_sequence_length),
+        NumericalizeTransform(DEFAULT_SPM_UNIGRAM_FILEPATH, subword_regularization_alpha, max_sequence_length),
         CanonicalizeKeysTransform(data='function'),
     ])
     augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms, contrastive=True)
@@ -111,8 +95,8 @@ def pretrain(
                               drop_last=True)
 
     # Create model
-    model = ContrastiveTrainer(vocab_size=sp.GetPieceSize(), pad_id=pad_id)
-    logger.info(f"Created ContrastiveTrainer with {count_parameters(model)} params")
+    model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
+    logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
     params = model.decoder.parameters() if train_decoder_only else model.parameters()

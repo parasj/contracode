@@ -12,7 +12,7 @@ from representjs import CSNJS_DIR
 from representjs.data.csn_js_jsonl import JSONLinesDataset, get_csnjs_dataset
 from representjs.data.csn_js_loader import normalize_program
 from representjs.data.util import Timer
-from representjs.pretrain import CSNJS_TRAIN_FILEPATH
+from representjs.pretrain import DEFAULT_CSNJS_TRAIN_FILEPATH
 
 
 class Transform:
@@ -163,7 +163,7 @@ class PadCollateWrapper:
 
 if __name__ == "__main__":
     SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
-    train_dataset = get_csnjs_dataset(CSNJS_TRAIN_FILEPATH, label_mode="none", limit_size=100)
+    train_dataset = get_csnjs_dataset(DEFAULT_CSNJS_TRAIN_FILEPATH, label_mode="none", limit_size=100)
     test_transforms = ComposeTransform([
         WindowLineCropTransform(6),
         # NumericalizeTransform(SPM_UNIGRAM_FILEPATH, 0., 1024),
