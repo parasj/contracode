@@ -2,129 +2,170 @@ import os
 import time
 import pathlib
 import pprint
+import random
 
 import fire
+import numpy as np
 import pytorch_lightning as pl
 import sentencepiece as spm
 import torch
+from torch import nn
 import torch.nn.functional as F
 from loguru import logger
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
+import tqdm
+import wandb
 
-from data.csn_js_jsonl import JSONLinesDataset
-from data.csn_js_pyloader import AugmentedJSDataset, ComposeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, \
-    NumericalizeTransform, PadCollateWrapper
+from data.csn_js_jsonl import JSONLinesDataset, get_csnjs_dataset
+from data.csn_js_loader import javascript_dataloader
+# from data.csn_js_pyloader import AugmentedJSDataset, ComposeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, \
+    # NumericalizeTransform, PadCollateWrapper
 from models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
-from utils import accuracy
+from utils import accuracy, count_parameters
 
 CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
 
 
-class ContrastiveTrainer(pl.LightningModule):
+class ContrastiveTrainer(nn.Module):
     def __init__(
             self,
-            n_epochs: int,
-            batch_size: int,
-            lr: float,
-            adam_betas=(0.9, 0.98),
-            weight_decay: float = 0.,
-            subword_regularization_alpha=0.,
-            train_ds_path: str = CSNJS_TRAIN_FILEPATH,
-            spm_filepath: str = SPM_UNIGRAM_FILEPATH,
-            num_workers: int = 8,
-            data_limit_size: int = -1,
-            max_length: int = 1024):
+            vocab_size: int,
+            pad_id: int):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k not in ['self', '__class__']}
         logger.info("Running with configuration:\n{}".format(pprint.pformat(self.config)))
-        sm = self.load_sentencepiece(self.config['spm_filepath'])
-        self.pad_id = sm.PieceToId("[PAD]") 
-        self.moco_model = CodeMoCo(sm.GetPieceSize(), pad_id=self.pad_id)
+        assert pad_id is not None
+        self.pad_id = pad_id
+        self.moco_model = CodeMoCo(vocab_size, pad_id=self.pad_id)
         self.config.update(self.moco_model.config)
 
     def forward(self, imgs_query, imgs_key):
         return self.moco_model(imgs_query, imgs_key)
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx=None, use_cuda=False):
         imgs, _ = batch
+        if use_cuda:
+            imgs = imgs.cuda()
         imgs_k, imgs_q = imgs[:, 0, :], imgs[:, 1, :]
         output, target = self(imgs_q, imgs_k)
         loss = F.cross_entropy(output, target)
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        logs = {'pretrain_loss': loss, 'pretrain_acc@1': acc1[0],
-                'pretrain_acc@5': acc5[0], 'pretrain_queue_ptr': self.moco_model.queue_ptr}
+        logs = {'pretrain/loss': loss.item(), 'pretrain/acc@1': acc1[0].item(),
+                'pretrain/acc@5': acc5[0].item(), 'pretrain/queue_ptr': self.moco_model.queue_ptr.item()}
         return {'loss': loss, 'log': logs}
 
-    @staticmethod
-    def load_sentencepiece(spm_filename):
-        sp = spm.SentencePieceProcessor()
-        sp.Load(spm_filename)
-        return sp
 
-    def configure_optimizers(self):  # todo scheduler
-        return [torch.optim.Adam(self.parameters(), lr=self.config['lr'], betas=self.config['adam_betas'],
-                                 weight_decay=self.config['weight_decay'])]
+def pretrain(
+        run_name: str,
 
-    def train_dataloader(self):
-        dataset_fields = {"function": "function"}
-        jsonl_dataset = JSONLinesDataset(self.config['train_ds_path'], fields=dataset_fields,
-                                         require_fields=[], limit_size=self.config['data_limit_size'])
+        # Data
+        train_filepath: str = CSNJS_TRAIN_FILEPATH,
+        spm_filepath: str = SPM_UNIGRAM_FILEPATH,
+        program_mode="identity",
+        num_workers=1,
+        limit_dataset_size=-1,
 
-        train_dataset = AugmentedJSDataset(jsonl_dataset, self.make_transforms(), contrastive=True, max_length=self.config['max_length'])
-        logger.info("Training dataset size:", len(train_dataset))
-        collate_wrapper = PadCollateWrapper(contrastive=True, pad_id=self.pad_id)
-        return DataLoader(train_dataset, self.config['batch_size'], shuffle=True,
-                          collate_fn=collate_wrapper,
-                          num_workers=self.config['num_workers'],
-                          drop_last=True)
+        # Optimization
+        train_decoder_only: bool=False,
+        num_epochs: int = 100,
+        save_every: int = 2,
+        batch_size: int = 256,
+        lr: float = 8e-4,
 
-    def make_transforms(self):
-        return ComposeTransform([
-            WindowLineCropTransform(6),
-            NumericalizeTransform(self.config['spm_filepath'], self.config['subword_regularization_alpha'],
-                                  self.config['max_length']),
-            CanonicalizeKeysTransform(data='function_ids')])
+        # Loss
+        subword_regularization_alpha: float = 0,
 
+        # Computational
+        use_cuda: bool = True,
+        seed: int=0
+):
+    """Train model"""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
-def fit(n_epochs: int, run_name: str, use_gpu=True, use_fp16=False, run_dir_base=RUN_DIR,
-        dataset=CSNJS_TRAIN_FILEPATH, vocab=SPM_UNIGRAM_FILEPATH, **kwargs):
-    setattr(WandbLogger, 'name', property(lambda self: self._name))
-    extra_trainer_args = dict()
-    if use_fp16:
-        extra_trainer_args.update(dict(amp_level='O1', precision=16))
-    logger.info("Using extra training arguments for Pytorch Lightning {}".format(extra_trainer_args))
-    logger.info("Training model with run name {}, use_gpu = {}".format(run_name, use_gpu))
+    run_dir = RUN_DIR / run_name
+    run_dir.mkdir(exist_ok=True, parents=True)
+    logger.add(str((run_dir / "train.log").resolve()))
+    logger.info(f"Saving logs, model checkpoints to {run_dir}")
+    config = locals()
+    logger.info(f"Config: {config}")
+    wandb.init(name=run_name, config=config, job_type="training", project="code-representation", entity="ml4code")
 
-    run_dir = (pathlib.Path(run_dir_base) / "{}_{}".format(run_name, int(time.time()))).resolve()
-    run_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Saving results to {}".format(run_dir))
-    
-    model = ContrastiveTrainer(n_epochs=n_epochs, train_ds_path=dataset, spm_filepath=vocab, **kwargs)
-    wandb_logger = WandbLogger(name=run_name, save_dir=str(run_dir), entity="ml4code", project="code-representation", log_model=True)
-    # wandb_logger.watch(model, log="all")
-    wandb_logger.log_hyperparams(model.config)
+    if use_cuda:
+        assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
 
-    checkpoint_callback = ModelCheckpoint(
-        filepath=str(run_dir) + "/weights_{epoch:04d}.ckpt",
-        verbose=True,
-        period=1,
-        save_top_k=-1
-    )
+    train_augmentations = [
+        {"fn": "sample_lines", "line_length_pct": 0.5},
+        {"fn": "insert_var_declaration", "prob": 0.5},
+        {"fn": "rename_variable", "prob": 0.5}
+    ]
 
-    trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=False,
-                      distributed_backend="dp", gpus=-1 if use_gpu else None, max_epochs=n_epochs, checkpoint_callback=checkpoint_callback,
-                      **extra_trainer_args)
-    logger.info("CUDA_DEVICE_ORDER={}".format(os.environ.get("CUDA_DEVICE_ORDER")))
-    logger.info("CUDA_VISIBLE_DEVICES={}".format(os.environ.get("CUDA_VISIBLE_DEVICES")))
-    logger.info("trainer.is_slurm_managing_tasks = {}".format(trainer.is_slurm_managing_tasks))
-    
-    trainer.fit(model)
+    sp = spm.SentencePieceProcessor()
+    sp.Load(spm_filepath)
+    pad_id = sp.PieceToId("[PAD]")
+
+    # Create training dataset and dataloader
+    logger.info(f"Training data path {train_filepath}")
+    train_dataset = get_csnjs_dataset(train_filepath, label_mode="none", limit_size=limit_dataset_size)
+    logger.info(f"Training dataset size: {len(train_dataset)}")
+    train_loader = javascript_dataloader(
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
+        augmentations=train_augmentations, sp=sp, program_mode=program_mode,
+        subword_regularization_alpha=subword_regularization_alpha)
+
+    # Create model
+    model = ContrastiveTrainer(vocab_size=sp.GetPieceSize(), pad_id=pad_id)
+    logger.info(f"Created ContrastiveTrainer with {count_parameters(model)} params")
+    model = nn.DataParallel(model)
+    model = model.cuda() if use_cuda else model
+    params = model.decoder.parameters() if train_decoder_only else model.parameters()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.98), eps=1e-9)
+
+    global_step = 0
+    min_eval_loss = float("inf")
+    for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
+        logger.info(f"Starting epoch {epoch}\n")
+        model.train()
+        pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
+        for batch in pbar:
+            optimizer.zero_grad()
+            # NOTE: X is a [B, max_seq_len] tensor (batch first)
+            train_metrics = model.training_step(batch, use_cuda=use_cuda)
+            loss = train_metrics["loss"]
+            loss.backward()
+            optimizer.step()
+
+            # Log loss
+            global_step += 1
+            logs = train_metrics["logs"]
+            logs.update({
+                "epoch": epoch,
+            })
+            wandb.log(logs, step=global_step)
+            pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
+
+        # Save checkpoint
+        if save_every and epoch % save_every == 0:
+            checkpoint = {
+                "model_state_dict": model.module.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "epoch": epoch,
+                "global_step": global_step,
+                "config": config,
+            }
+            model_file = run_dir / f"ckpt_pretrain_ep{epoch:04d}.pth"
+            logger.info(f"Saving checkpoint to {model_file}...")
+            torch.save(checkpoint, str(model_file.resolve()))
+            logger.info("Done.")
 
 
 if __name__ == "__main__":
-    fire.Fire(fit)
+    fire.Fire({
+        "pretrain": pretrain
+    })
