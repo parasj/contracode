@@ -20,10 +20,12 @@ function rename_variable(ast, {prob = 0.5}) {
     traverse(ast, {
         FunctionDeclaration(path) {
             if (Math.random() < prob) {
-                var exampleState = path.node.params[0].name;
-                let len = Math.random() * 10 + 1;
-                const id = randomString(len); 
-                path.scope.rename(exampleState, id);
+                if (path.node.params.length > 0) {
+                    var exampleState = path.node.params[0].name;
+                    let len = Math.random() * 10 + 1;
+                    const id = randomString(len); 
+                    path.scope.rename(exampleState, id);
+                }
             }
         }
     });
