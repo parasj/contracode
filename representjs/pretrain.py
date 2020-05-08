@@ -1,5 +1,6 @@
 import time
 import pprint
+import os
 
 import fire
 import pytorch_lightning as pl
@@ -18,6 +19,7 @@ from models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
 from utils import accuracy
 
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID" 
 setattr(WandbLogger, 'name', property(lambda self: self._name))
 
 CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
@@ -91,8 +93,11 @@ class ContrastiveTrainer(pl.LightningModule):
         ])
 
 
-def fit(n_epochs: int, run_name: str, num_gpus: int = None, **kwargs):
-    logger.info("Training model w/ {} GPUs and run name {}".format(num_gpus, run_name))
+def fit(n_epochs: int, run_name: str, use_gpu: bool = True, **kwargs):
+    logger.info("Training model with run name {}".format(run_name))
+    if use_gpu:
+        logger.info("CUDA_DEVICE_ORDER={}".format(os.environ["CUDA_DEVICE_ORDER"]))
+        logger.info("CUDA_VISIBLE_DEVICES={}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
     run_dir = (RUN_DIR / "{}_{}".format(run_name, int(time.time()))).resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Saving results to {}".format(run_dir))
@@ -101,7 +106,8 @@ def fit(n_epochs: int, run_name: str, num_gpus: int = None, **kwargs):
     # wandb_logger.watch(model, log="all")
     wandb_logger.log_hyperparams(model.config)
     trainer = Trainer(logger=wandb_logger, default_root_dir=str(run_dir), benchmark=True, track_grad_norm=2,
-                      distributed_backend="ddp", gpus=num_gpus, max_epochs=n_epochs)  # amp_level='O1', precision=16
+                      distributed_backend="ddp", gpus=-1 if use_gpu else None, max_epochs=n_epochs)
+    # amp_level='O1', precision=16
     trainer.fit(model)
 
 

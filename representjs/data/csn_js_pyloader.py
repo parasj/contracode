@@ -11,6 +11,7 @@ from torchtext.data import load_sp_model
 
 from data.csn_js_jsonl import JSONLinesDataset
 from data.csn_js_loader import normalize_program
+from data.util import Timer
 
 
 class Transform:
