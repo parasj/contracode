@@ -47,6 +47,7 @@ def pretrain(
         limit_dataset_size=-1,
         max_sequence_length=1024,
         augment_window_crop_size=6,
+        subword_regularization_alpha: float = 0,
 
         # Optimization
         train_decoder_only: bool = False,
@@ -56,13 +57,12 @@ def pretrain(
         lr: float = 8e-4,
         adam_betas=(0.9, 0.98),
 
-        # Loss
-        subword_regularization_alpha: float = 0,
-
         # Computational
         use_cuda: bool = True,
         seed: int = 0
 ):
+    run_name = str(run_name)  # support numerical run ids
+    slurm_job_id, slurm_job_hostname = os.environ.get('SLURM_JOB_ID'), os.environ.get('SLURM_JOB_NODELIST')
     config = locals()
     logger.info("Training configuration: {}".format(config))
     logger.info("CUDA_VISIBLE_DEVICES = '{}', CUDA_DEVICE_ORDER = '{}'".format(os.environ.get('CUDA_VISIBLE_DEVICES'), os.environ.get('CUDA_DEVICE_ORDER')))
