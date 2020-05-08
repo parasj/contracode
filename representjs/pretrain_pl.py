@@ -14,9 +14,9 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 
-from representjs.data.csn_js_jsonl import JSONLinesDataset
-from representjs.data.csn_js_pyloader import AugmentedJSDataset, ComposeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, \
-    NumericalizeTransform, PadCollateWrapper
+from data.csn_js.jsonl_dataset import JSONLinesDataset
+from representjs.data.csn_js_pyloader import AugmentedJSDataset, PadCollateWrapper
+from data.transforms import NumericalizeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, ComposeTransform
 from representjs.models.code_moco import CodeMoCo
 from representjs import RUN_DIR, CSNJS_DIR
 from representjs.utils import accuracy

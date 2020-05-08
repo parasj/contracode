@@ -12,10 +12,10 @@ from loguru import logger
 from torch import nn
 from torch.utils.data import DataLoader
 
-from data.csn_js_pyloader import ComposeTransform, WindowLineCropTransform, CanonicalizeKeysTransform, NumericalizeTransform, \
-    AugmentedJSDataset, PadCollateWrapper
 from representjs import RUN_DIR, CSNJS_DIR
-from representjs.data.csn_js_jsonl import get_csnjs_dataset
+from representjs.data import transforms
+from representjs.data.csn_js.augmented_dataset import AugmentedJSDataset, PadCollateWrapper
+from representjs.data.csn_js.jsonl_dataset import get_csnjs_dataset
 from representjs.models.code_moco import CodeMoCo
 from representjs.utils import accuracy, count_parameters
 
@@ -42,7 +42,6 @@ def pretrain(
         # Data
         train_filepath: str = DEFAULT_CSNJS_TRAIN_FILEPATH,
         spm_filepath: str = DEFAULT_SPM_UNIGRAM_FILEPATH,
-        program_mode="identity",
         num_workers=1,
         limit_dataset_size=-1,
         max_sequence_length=1024,
@@ -50,9 +49,8 @@ def pretrain(
         subword_regularization_alpha: float = 0,
 
         # Optimization
-        train_decoder_only: bool = False,
         num_epochs: int = 100,
-        save_every: int = 2,
+        save_every: int = 1,
         batch_size: int = 256,
         lr: float = 8e-4,
         adam_betas=(0.9, 0.98),
@@ -84,10 +82,10 @@ def pretrain(
 
     # Create training dataset and dataloader
     train_dataset = get_csnjs_dataset(train_filepath, label_mode="none", limit_size=limit_dataset_size)
-    test_transforms = ComposeTransform([
-        WindowLineCropTransform(augment_window_crop_size),
-        NumericalizeTransform(DEFAULT_SPM_UNIGRAM_FILEPATH, subword_regularization_alpha, max_sequence_length),
-        CanonicalizeKeysTransform(data='function'),
+    test_transforms = transforms.ComposeTransform([
+        transforms.WindowLineCropTransform(augment_window_crop_size),
+        transforms.NumericalizeTransform(DEFAULT_SPM_UNIGRAM_FILEPATH, subword_regularization_alpha, max_sequence_length),
+        transforms.CanonicalizeKeysTransform(data='function'),
     ])
     augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms, contrastive=True)
     collate_wrapper = PadCollateWrapper(contrastive=True, pad_id=pad_id)
@@ -99,7 +97,7 @@ def pretrain(
     logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
-    params = model.decoder.parameters() if train_decoder_only else model.parameters()
+    params = model.parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=adam_betas, eps=1e-9)
 
     global_step = 0
