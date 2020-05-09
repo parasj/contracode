@@ -37,6 +37,7 @@ if __name__ == "__main__":
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_valid_0.jsonl.gz", True))
     cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", True))
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", True))
+    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", True))
 
     print("\n".join(cmds))
 
