@@ -60,10 +60,10 @@ def _augment_server(transform_payload: List[dict]) -> List[str]:
     except Exception as e:
         # Transformation failed in Node.js (got malformed stdout), so don't transform
         logger.error(f"Exception in _augment_server: {e}")
-        logger.error(f"Exception in _augment_server transform input: {transform_payload}")
-        if response:
-            logger.error(f"Exception in _augment_server transform status code: {response.status_code}")
-            logger.error(f"Exception in _augment_server transform response: {response}")
+        # logger.error(f"Exception in _augment_server transform input: {transform_payload}")
+        # if response:
+        #     logger.error(f"Exception in _augment_server transform status code: {response.status_code}")
+        #     logger.error(f"Exception in _augment_server transform response: {response}")
         transformed = [prog["src"] for prog in transform_payload]
     return transformed
 
