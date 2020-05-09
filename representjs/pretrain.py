@@ -81,16 +81,11 @@ def pretrain(
     pad_id = sp.PieceToId("[PAD]")
 
     train_augmentations = [	
-        {"fn": "insert_var_declaration", "prob": 0.1},	
-        {"fn": "rename_variable", "prob": 0.1},	
-        # 1 - .9^3 chance of at least one of compress, mangle, and compress_mangle being applied
-        # {"fn": "compress", "prob": 0.1},
-        # {"fn": "mangle", "prob": 0.1},
-        # {"fn": "compress_mangle", "prob": 0.1},
-        # {"fn": "remove_comments", "prob": 0.2},
+        {"fn": "rename_variable", "prob": 0.25},
+        {"fn": "insert_var_declaration", "prob": 0.25},
         {"fn": "terser", "prob": 0.5, "prob_mangle": 0.1},
-        {"fn": "sample_lines", "line_length_pct": 0.9},	
-    ]	
+        {"fn": "sample_lines", "prob": 0.25, "prob_keep_line": 0.9}
+    ] 
     # Create training dataset and dataloader
     train_dataset = get_csnjs_dataset(train_filepath, label_mode="none", limit_size=limit_dataset_size)
     # test_transforms = transforms.ComposeTransform([ transforms.WindowLineCropTransform(augment_window_crop_size),

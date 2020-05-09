@@ -86,5 +86,4 @@ class JavascriptAugmentations {
 
 var data = JSON.parse(fs.readFileSync(0, 'utf-8'));
 const javascriptAugmenter = new JavascriptAugmentations();
-// console.log(JSON.stringify(data.map(x => javascriptAugmenter.transform(x['src'], x['augmentations']))));
-console.log(data.map(x => javascriptAugmenter.transform(x['src'], x['augmentations']))[0]);
+console.log(JSON.stringify(data.map(x => javascriptAugmenter.transform(x['src'], x['augmentations']))));
