@@ -11,11 +11,8 @@ import tqdm
 import wandb
 from loguru import logger
 from torch import nn
-from torch.utils.data import DataLoader
 
-from representjs import RUN_DIR, CSNJS_DIR
-from data import transforms
-# from data.augmented_dataset import AugmentedJSDataset, PadCollateWrapper
+from . import RUN_DIR, CSNJS_DIR
 from data.old_dataloader import javascript_dataloader
 from data.jsonl_dataset import get_csnjs_dataset
 from models.code_moco import CodeMoCo

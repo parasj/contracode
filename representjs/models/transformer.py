@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn as nn
 
-from representjs.models.code_moco import CodeEncoder
+from models.code_moco import CodeEncoder
 
 
 class TransformerModel(nn.Module):

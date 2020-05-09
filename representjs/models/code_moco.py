@@ -2,7 +2,7 @@ import math
 
 from torch import nn
 
-from representjs.models.moco_template import MoCoTemplate
+from models.moco_template import MoCoTemplate
 from models.positional_embedding import PositionalEncoding
 
 
