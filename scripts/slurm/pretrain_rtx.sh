@@ -21,12 +21,11 @@ cd /work/paras/representjs
 pip install torch
 pip install -e .
 npm install
-python representjs/pretrain.py 20008_pretrain_ace \
+python representjs/pretrain.py 20010_pretrain_b128 \
     --run_dir_base="/data/paras/coderep_runs" \
     --n_epochs=100 \
-    --batch_size=64 \
+    --batch_size=128 \
     --lr="8e-4" \
-    --limit_dataset_size=10000 \
-    --num_workers=4 \
+    --num_workers=32 \
     --train_filepath="/tmp/data_cache/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz" \
     --spm_filepath="/tmp/data_cache/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model"

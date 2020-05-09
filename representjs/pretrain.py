@@ -32,7 +32,7 @@ def training_step(model, batch, use_cuda=False):
     loss = F.cross_entropy(output, target)
     acc1, acc5 = accuracy(output, target, topk=(1, 5))
     logs = {'pretrain/loss': loss.item(), 'pretrain/acc@1': acc1[0].item(),
-            'pretrain/acc@5': acc5[0].item(), 'pretrain/queue_ptr': model.module.moco_model.queue_ptr.item()}
+            'pretrain/acc@5': acc5[0].item(), 'pretrain/queue_ptr': model.module.queue_ptr.item()}
     return {'loss': loss, 'log': logs}
 
 
@@ -85,11 +85,11 @@ def pretrain(
     test_transforms = transforms.ComposeTransform([
         transforms.WindowLineCropTransform(augment_window_crop_size),
         transforms.NumericalizeTransform(DEFAULT_SPM_UNIGRAM_FILEPATH, subword_regularization_alpha, max_sequence_length),
-        transforms.CanonicalizeKeysTransform(data='function'),
+        transforms.CanonicalizeKeysTransform(data='function_ids'),
     ])
     augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms, contrastive=True)
     collate_wrapper = PadCollateWrapper(contrastive=True, pad_id=pad_id)
-    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, collate_fn=collate_wrapper, num_workers=num_workers,
+    train_loader = DataLoader(augmented_dataset, batch_size, shuffle=True, collate_fn=collate_wrapper, num_workers=num_workers,
                               drop_last=True)
 
     # Create model
