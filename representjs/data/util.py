@@ -7,11 +7,16 @@ from loguru import logger
 from representjs import PACKAGE_ROOT
 
 
-def dispatch_to_node(node_file: str, stdin: Optional[str] = None) -> Tuple[str, str]:
+def dispatch_to_node(node_file: str, stdin: Optional[str] = None, timeout_s: int = 5) -> Tuple[bool, str, str]:
     absolute_script_path = str((PACKAGE_ROOT / "node_src" / node_file).resolve())
-    p = Popen(['node', absolute_script_path], stdout=PIPE, stdin=PIPE, stderr=PIPE)
-    stdout, stderr = p.communicate(input=stdin.encode() if stdin is not None else None)
-    return stdout.decode().strip(), stderr.decode().strip()
+    p = Popen(['timeout', timeout_s, 'node', absolute_script_path], stdout=PIPE, stdin=PIPE, stderr=PIPE)
+    if stdin is not None:
+        p.stdin.write(stdin.encode())
+    stdout, stderr = p.communicate()
+    return_code = p.returncode
+    if return_code != 0:
+        logger.error("Got non-zero exit code {} for command {}".format(return_code, node_file))
+    return (return_code == 0), stdout.decode().strip(), stderr.decode().strip()
 
 
 class Timer:
