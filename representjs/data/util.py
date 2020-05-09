@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 import time
 import representjs
 from subprocess import Popen, PIPE
+from loguru import logger
 
 
 def dispatch_to_node(node_file: str, stdin: Optional[str] = None) -> Tuple[str, str]:
@@ -28,6 +29,8 @@ _whitespace_regex = re.compile(r'[ \t\n]+')
 
 
 def normalize_program(fn: str):
+    if not isinstance(fn, (str, bytes)):
+        logger.error(f"normalize_program got non-str: {type(fn)}, {fn}")
     fn = _newline_regex.sub(r' [EOL]', fn)
     fn = _whitespace_regex.sub(' ', fn)
     return fn

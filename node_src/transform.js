@@ -11,7 +11,11 @@ class JavascriptAugmentations {
             'insert_var_declaration': require('./ast2ast/insert_var_declaration.js'),
         };
         this.fnSrcToSrc = {
-            'sample_lines': require('./source2source/sample_lines')
+            'sample_lines': require('./source2source/sample_lines.js'),
+            'compress': require('./source2source/compress.js'),
+            'mangle': require('./source2source/mangle.js'),
+            'compress_mangle': require('./source2source/compress_mangle.js'),
+            'remove_comments': require('./source2source/remove_comments.js'),
         };
     }
 
@@ -60,17 +64,26 @@ class JavascriptAugmentations {
                 const transformed_obj = this.transform_match_input(data, is_ast, transformation);
                 let data_new = transformed_obj['fnTransform'](transformed_obj['data'], options);
                 const is_ast_new = transformed_obj['produces_ast'];
-                if (is_ast_new) {
-                    data_new = this.astToSrc(data);
-                }
+                // if (is_ast_new) {
+                    // NOTE(AJ): this code seems strange to me... why convert to source?
+                    // data_new = this.astToSrc(data);
+                    // data_new = this.astToSrc(data_new);
+                // }
 
-                // no exception thrown
-                data = data_new;
-                is_ast = is_ast_new;
+                if (data_new != null) {
+                    // no exception thrown
+                    data = data_new;
+                    is_ast = is_ast_new;
+                }
             } catch (e) {
                 console.error("Could not transform object!", transformationObj, ", got error ", e);
             }
         }
+
+        if (is_ast) {
+            data = this.astToSrc(data);
+        }
+
         return data;
     }
 }

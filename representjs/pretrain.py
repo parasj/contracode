@@ -14,7 +14,8 @@ from torch.utils.data import DataLoader
 
 from representjs import RUN_DIR, CSNJS_DIR
 from representjs.data import transforms
-from representjs.data.augmented_dataset import AugmentedJSDataset, PadCollateWrapper
+# from representjs.data.augmented_dataset import AugmentedJSDataset, PadCollateWrapper
+from representjs.data.old_dataloader import javascript_dataloader
 from representjs.data.jsonl_dataset import get_csnjs_dataset
 from representjs.models.code_moco import CodeMoCo
 from representjs.utils import accuracy, count_parameters
@@ -47,6 +48,7 @@ def pretrain(
         max_sequence_length=1024,
         augment_window_crop_size=6,
         subword_regularization_alpha: float = 0,
+        program_mode="contrastive",
 
         # Optimization
         num_epochs: int = 100,
@@ -80,6 +82,16 @@ def pretrain(
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
 
+    train_augmentations = [	
+        {"fn": "insert_var_declaration", "prob": 0.1},	
+        {"fn": "rename_variable", "prob": 0.1},	
+        # 1 - .9^3 chance of at least one of compress, mangle, and compress_mangle being applied
+        {"fn": "compress", "prob": 0.1},
+        {"fn": "mangle", "prob": 0.1},
+        {"fn": "compress_mangle", "prob": 0.1},
+        {"fn": "remove_comments", "prob": 0.2},
+        {"fn": "sample_lines", "line_length_pct": 0.9},	
+    ]	
     # Create training dataset and dataloader
     train_dataset = get_csnjs_dataset(train_filepath, label_mode="none", limit_size=limit_dataset_size)
 #     test_transforms = transforms.ComposeTransform([
@@ -123,19 +135,19 @@ def pretrain(
             wandb.log(dict(epoch=epoch, **train_metrics["log"]), step=global_step)
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
-        # Save checkpoint
-        if save_every and epoch % save_every == 0:
-            checkpoint = {
-                "model_state_dict": model.module.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "epoch": epoch,
-                "global_step": global_step,
-                "config": config,
-            }
-            model_file = run_dir / f"ckpt_pretrain_ep{epoch:04d}.pth"
-            logger.info(f"Saving checkpoint to {model_file}...")
-            torch.save(checkpoint, str(model_file.resolve()))
-            logger.info("Done.")
+            # Save checkpoint
+            if save_every and global_step % save_every == 0:
+                checkpoint = {
+                    "model_state_dict": model.module.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "epoch": epoch,
+                    "global_step": global_step,
+                    "config": config,
+                }
+                model_file = run_dir / f"ckpt_pretrain_ep{epoch:04d}_step{global_step:07d}.pth"
+                logger.info(f"Saving checkpoint to {model_file}...")
+                torch.save(checkpoint, str(model_file.resolve()))
+                logger.info("Done.")
 
 
 if __name__ == "__main__":

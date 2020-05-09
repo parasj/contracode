@@ -16,11 +16,15 @@ def _augment(transform_payload: List[dict]) -> List[str]:
     # Transform code
     transform_payload = json.dumps(transform_payload)
     stdout, stderr = dispatch_to_node('transform.js', transform_payload)
-    # if stderr:
-    #     logger.error("WARNING: node error")
-    #     logger.error("stdin: \n" + transform_payload)
-    #     logger.error("stdout: \n" + stdout)
-    #     logger.error("stderr: \n" + stderr)
+    if stderr:
+        logger.error("WARNING: node error")
+        logger.error("stdin: \n" + transform_payload)
+        logger.error("stdout: \n" + stdout)
+        logger.error("stderr: \n" + stderr)
+    else:
+        logger.debug("Successful augment")
+        logger.debug("stdin: \n" + transform_payload)
+        logger.debug("stdout: \n" + stdout)
     transformed = json.loads(stdout)
     assert isinstance(transformed, list)
     return transformed
