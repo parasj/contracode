@@ -16,6 +16,7 @@ class JavascriptAugmentations {
             'mangle': require('./source2source/mangle.js'),
             'compress_mangle': require('./source2source/compress_mangle.js'),
             'remove_comments': require('./source2source/remove_comments.js'),
+            'terser': require('./source2source/terser.js'),
         };
     }
 
