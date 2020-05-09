@@ -14,12 +14,12 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from representjs import RUN_DIR, CSNJS_DIR
-from representjs.data import transforms
-# from representjs.data.augmented_dataset import AugmentedJSDataset, PadCollateWrapper
-from representjs.data.old_dataloader import javascript_dataloader
-from representjs.data.jsonl_dataset import get_csnjs_dataset
-from representjs.models.code_moco import CodeMoCo
-from representjs.utils import accuracy, count_parameters
+from data import transforms
+# from data.augmented_dataset import AugmentedJSDataset, PadCollateWrapper
+from data.old_dataloader import javascript_dataloader
+from data.jsonl_dataset import get_csnjs_dataset
+from models.code_moco import CodeMoCo
+from utils import accuracy, count_parameters
 
 DEFAULT_CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 DEFAULT_SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
@@ -145,7 +145,7 @@ def pretrain(
                 model_file = run_dir / f"ckpt_pretrain_ep{epoch:04d}_step{global_step:07d}.pth"
                 logger.info(f"Saving checkpoint to {model_file}...")
                 torch.save(checkpoint, str(model_file.resolve()))
-                wandb.save(model_file)
+                # wandb.save(model_file)
                 logger.info("Done.")
 
 

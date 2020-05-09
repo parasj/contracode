@@ -8,8 +8,8 @@ from loguru import logger
 from torch.nn.utils.rnn import pad_sequence
 
 from data.jsonl_dataset import JSONLinesDataset
-from representjs.data.util import normalize_program
-from representjs.data.util import dispatch_to_node
+from data.util import normalize_program
+from data.util import dispatch_to_node
 
 
 def _augment(transform_payload: List[dict]) -> List[str]:
@@ -18,9 +18,9 @@ def _augment(transform_payload: List[dict]) -> List[str]:
     stdout, stderr = dispatch_to_node('transform.js', transform_payload)
     # if stderr:
     #     logger.error("WARNING: node error")
-        # logger.error("stdin: \n" + transform_payload)
-        # logger.error("stdout: \n" + stdout)
-        # logger.error("stderr: \n" + stderr)
+    #     logger.error("stdin: \n" + transform_payload)
+    #     logger.error("stdout: \n" + stdout)
+    #     logger.error("stderr: \n" + stderr)
     # else:
     #     logger.debug("Successful augment")
     #     logger.debug("stdin: \n" + transform_payload)
