@@ -105,7 +105,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
 
         self.examples = []
         logger.debug(f"Loading {full_path}")
-        for line in tqdm.tqdm(reader, desc=full_path.name, total=limit_size if limit_size >= 0 else 1.8*1e6):
+        for line in tqdm.tqdm(reader, desc=full_path.name, total=limit_size if limit_size >= 0 else 1843099):
             example = _make_example(line, fields, require_fields, src_function_key, src_method_name_key)
             if example:
                 self.examples.append(example)
