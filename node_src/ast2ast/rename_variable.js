@@ -1,5 +1,6 @@
 const traverse = require('@babel/traverse').default;
 const t = require("@babel/types");
+var randomWords = require('random-words');
 
 /*
 Function signature for transformations:
@@ -9,11 +10,8 @@ function(ASTNode, {prob}) -> ASTNode
 prob is the probability to replace the name with fixed name
 */
 
-function randomString(length) {
-    chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    var result = '';
-    for (var i = length; i > 0; --i) result += chars[Math.floor(Math.random() * chars.length)];
-    return result;
+function getRandomInt(max) {
+    return Math.floor(Math.random() * Math.floor(max));
 }
 
 function rename_variable(ast, {prob = 0.5}) {
@@ -21,9 +19,17 @@ function rename_variable(ast, {prob = 0.5}) {
         FunctionDeclaration(path) {
             if (Math.random() < prob) {
                 if (path.node.params.length > 0) {
-                    var exampleState = path.node.params[0].name;
-                    let len = Math.random() * 10 + 1;
-                    const id = randomString(len); 
+                    let idx = getRandomInt(path.node.params.length);
+                    var exampleState = path.node.params[idx].name;
+                    let len = Math.floor(Math.random() * 2) + 1;
+                    let id;
+                    if (Math.random() < 0.5) {
+                        id = randomWords({exactly:1, wordsPerString:len, separator:'_'})[0];
+                    } else {
+                        id = randomWords({exactly:1, wordsPerString:len, formatter: (word, index)=> {
+                            return index > 0 ? word.slice(0,1).toUpperCase().concat(word.slice(1)) : word;
+                        }, separator: ""})[0];
+                    }
                     path.scope.rename(exampleState, id);
                 }
             }

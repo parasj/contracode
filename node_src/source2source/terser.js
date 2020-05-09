@@ -39,13 +39,17 @@ module.exports = (js_src, {
             options["keep_classnames"] = true;
         }
         // Output options
-        options["beautify"] = {
+        options["output"] = {
+            "beautify": (Math.random() < 0.75),
             "braces": (Math.random() < 0.5),
             "indent_level": (Math.random() < 0.5 ? 4 : 2),
             "keep_quoted_props": (Math.random() < 0.5),
             "quote_keys": (Math.random() < 0.5),
             "quote_style": (Math.random() < 0.5 ? 0 : (Math.random() < 0.5 ? 1 : (Math.random() < 0.5 ? 2 : 3)))
         }
+        // options["compress"] = {"drop_console": true};
+        // options["mangle"] = true;
+        // options["output"]["beautify"] = false;
         return Terser.minify(js_src, options).code;
     }
 
