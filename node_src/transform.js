@@ -12,10 +12,10 @@ class JavascriptAugmentations {
         };
         this.fnSrcToSrc = {
             'sample_lines': require('./source2source/sample_lines.js'),
-            'compress': require('./source2source/compress.js'),
-            'mangle': require('./source2source/mangle.js'),
-            'compress_mangle': require('./source2source/compress_mangle.js'),
-            'remove_comments': require('./source2source/remove_comments.js'),
+            // 'compress': require('./source2source/compress.js'),
+            // 'mangle': require('./source2source/mangle.js'),
+            // 'compress_mangle': require('./source2source/compress_mangle.js'),
+            // 'remove_comments': require('./source2source/remove_comments.js'),
             'terser': require('./source2source/terser.js'),
         };
     }
@@ -65,13 +65,8 @@ class JavascriptAugmentations {
                 const transformed_obj = this.transform_match_input(data, is_ast, transformation);
                 let data_new = transformed_obj['fnTransform'](transformed_obj['data'], options);
                 const is_ast_new = transformed_obj['produces_ast'];
-                // if (is_ast_new) {
-                    // NOTE(AJ): this code seems strange to me... why convert to source?
-                    // data_new = this.astToSrc(data);
-                    // data_new = this.astToSrc(data_new);
-                // }
 
-                if (data_new != null) {
+                if (data_new != null && data_new != undefined) {
                     // no exception thrown
                     data = data_new;
                     is_ast = is_ast_new;

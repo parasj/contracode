@@ -1,4 +1,4 @@
 [
-  {"src": "function x() { console.log(1); } function y() { console.log(1); }",
+  {"src": "function x() { console.log(1); }",
   "augmentations": [{"fn": "extract_methods"}]}
 ]

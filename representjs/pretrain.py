@@ -12,7 +12,7 @@ import wandb
 from loguru import logger
 from torch import nn
 
-from . import RUN_DIR, CSNJS_DIR
+from representjs import RUN_DIR, CSNJS_DIR
 from data.old_dataloader import javascript_dataloader
 from data.jsonl_dataset import get_csnjs_dataset
 from models.code_moco import CodeMoCo
@@ -84,10 +84,11 @@ def pretrain(
         {"fn": "insert_var_declaration", "prob": 0.1},	
         {"fn": "rename_variable", "prob": 0.1},	
         # 1 - .9^3 chance of at least one of compress, mangle, and compress_mangle being applied
-        {"fn": "compress", "prob": 0.1},
-        {"fn": "mangle", "prob": 0.1},
-        {"fn": "compress_mangle", "prob": 0.1},
-        {"fn": "remove_comments", "prob": 0.2},
+        # {"fn": "compress", "prob": 0.1},
+        # {"fn": "mangle", "prob": 0.1},
+        # {"fn": "compress_mangle", "prob": 0.1},
+        # {"fn": "remove_comments", "prob": 0.2},
+        {"fn": "terser", "prob": 0.5, "prob_mangle": 0.1},
         {"fn": "sample_lines", "line_length_pct": 0.9},	
     ]	
     # Create training dataset and dataloader

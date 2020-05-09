@@ -139,16 +139,23 @@ def javascript_dataloader(
 if __name__ == "__main__":
     logger.debug("Loading unigram encoding")
     sp = spm.SentencePieceProcessor()
-    sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
+    sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model")
 
-    augmentation_examples = [
-        # {'fn': 'sample_lines', 'line_length_pct': '0.5'},
-        {'fn': 'insert_var_declaration', 'prob': '1.0'}
+    augmentation_examples = [	
+        {"fn": "insert_var_declaration", "prob": 0.1},	
+        {"fn": "rename_variable", "prob": 0.1},	
+        # 1 - .9^3 chance of at least one of compress, mangle, and compress_mangle being applied
+        # {"fn": "compress", "prob": 0.1},
+        # {"fn": "mangle", "prob": 0.1},
+        # {"fn": "compress_mangle", "prob": 0.1},
+        # {"fn": "remove_comments", "prob": 0.2},
+        {"fn": "terser", "prob": 0.5, "prob_mangle": 0.1},
+        {"fn": "sample_lines", "line_length_pct": 0.9},	
     ]
     for augmentation in augmentation_examples:
         logger.info(f"Testing augmentation {augmentation}")
         data_dir = "data/codesearchnet_javascript"
-        train_filepath = os.path.join(data_dir, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
+        train_filepath = os.path.join(data_dir, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
         train_dataset = JSONLinesDataset(train_filepath, limit_size=5)
         train_loader = javascript_dataloader(
             train_dataset, batch_size=2, shuffle=False,

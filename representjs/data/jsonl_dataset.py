@@ -67,7 +67,7 @@ def _make_example(json_dict, fields, require_fields, src_function_key, src_metho
         return None
 
     # Normalize docstring (replace URLs)
-    if "docstring" in require_fields:
+    if require_fields and "docstring" in require_fields:
         json_dict["docstring"] = normalize_docstring(json_dict["docstring"])
 
     return {out_key: json_dict[json_key] for json_key, out_key in fields.items()}
