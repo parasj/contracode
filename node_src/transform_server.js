@@ -1,29 +1,43 @@
+const cluster = require('cluster');
 const http = require('http');
-var JavascriptAugmentations = require('./javascript_augmentations')
+const numCPUs =  Math.floor(require('os').cpus().length * 0.5);
 
 const hostname = '127.0.0.1';
 const port = 3000;
 
-const javascriptAugmenter = new JavascriptAugmentations();
+if (cluster.isMaster) {
+    console.log(`Master ${process.pid} is running`);
+    for (let i = 0; i < numCPUs; i++) {
+        cluster.fork();
+    }
 
-const server = http.createServer((req, res) => {
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
-
-    let body = [];
-    req.on('data', (chunk) => {
-        body.push(chunk);
-    }).on('end', () => {
-        body = Buffer.concat(body).toString();
-        const data = JSON.parse(body);
-        console.log("got data", data);
-        const replyString = JSON.stringify(
-            data.map(x => javascriptAugmenter.transform(x['src'], x['augmentations'])));
-        res.end(replyString);
+    cluster.on('exit', (worker, code, signal) => {
+        console.error(`worker ${worker.process.pid} died`);
+        console.log("Spawning new worker to replace");
+        cluster.fork();
     });
-});
+} else {
+    console.log(`Worker ${process.pid} started`);
+    var JavascriptAugmentations = require('./javascript_augmentations');
+    const javascriptAugmenter = new JavascriptAugmentations();
+    const server = http.createServer((req, res) => {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
 
-server.listen(port, hostname, () => {
-    console.log(`Server running at http://${hostname}:${port}/`);
-});
+        let body = [];
+        req.on('data', (chunk) => {
+            body.push(chunk);
+        }).on('end', () => {
+            body = Buffer.concat(body).toString();
+            const data = JSON.parse(body);
+            console.log("got data", data);
+            const replyString = JSON.stringify(
+                data.map(x => javascriptAugmenter.transform(x['src'], x['augmentations'])));
+            res.end(replyString);
+        });
+    });
 
+    server.listen(port, hostname, () => {
+        console.log(`Server[${process.pid}] running at http://${hostname}:${port}/`);
+    });
+}
