@@ -16,16 +16,31 @@ def _augment(transform_payload: List[dict]) -> List[str]:
     # Transform code
     transform_payload = json.dumps(transform_payload)
     stdout, stderr = dispatch_to_node('transform.js', transform_payload)
-    if stderr:
-        logger.error("WARNING: node error")
-        logger.error("stdin: \n" + transform_payload)
-        logger.error("stdout: \n" + stdout)
-        logger.error("stderr: \n" + stderr)
-    else:
-        logger.debug("Successful augment")
-        logger.debug("stdin: \n" + transform_payload)
-        logger.debug("stdout: \n" + stdout)
-    transformed = json.loads(stdout)
+    # if stderr:
+    #     logger.error("WARNING: node error")
+        # logger.error("stdin: \n" + transform_payload)
+        # logger.error("stdout: \n" + stdout)
+        # logger.error("stderr: \n" + stderr)
+    # else:
+    #     logger.debug("Successful augment")
+    #     logger.debug("stdin: \n" + transform_payload)
+    #     logger.debug("stdout: \n" + stdout)
+    try:
+        transformed = json.loads(stdout)
+    except json.JSONDecodeError:
+        # Transformation failed in Node.js (got malformed stdout), so don't transform
+        logger.error(f"JSONDecodeError in _augment transform input: {transform_payload}")
+        logger.error(f"JSONDecodeError in _augment transform stdout: {stdout}")
+        logger.error(f"JSONDecodeError in _augment transform stderr: {stderr}")
+        transformed = [prog["src"] for prog in transform_payload]
+    except Exception as e:
+        # Transformation failed in Node.js (got malformed stdout), so don't transform
+        logger.error(f"Exception (maybe JSONDecodeError) in _augment: {e}")
+        logger.error(f"Exception in _augment transform input: {transform_payload}")
+        logger.error(f"Exception in _augment transform stdout: {stdout}")
+        logger.error(f"Exception in _augment transform stderr: {stderr}")
+        transformed = [prog["src"] for prog in transform_payload]
+ 
     assert isinstance(transformed, list)
     return transformed
 
