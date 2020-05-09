@@ -145,6 +145,7 @@ def pretrain(
                 model_file = run_dir / f"ckpt_pretrain_ep{epoch:04d}_step{global_step:07d}.pth"
                 logger.info(f"Saving checkpoint to {model_file}...")
                 torch.save(checkpoint, str(model_file.resolve()))
+                wandb.save(model_file)
                 logger.info("Done.")
 
 
