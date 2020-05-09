@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=contrastive_pretrain
-#SBATCH --output=/home/eecs/paras/slurm/coderep/%j_supervised_augment.log
+#SBATCH --output=/home/eecs/paras/slurm/coderep/%j_supervised_baseline.log
 #SBATCH --ntasks=1
 #SBATCH --mem=256000
 #SBATCH --time=125:00:00
@@ -33,9 +33,9 @@ pip install -e .
 npm install
 
 python representjs/main.py train \
-	--run_name 20017_augmentation_identifier_codeenc_noreset_4ldecoder \
-	--program_mode augmentation --label_mode identifier \
-	--n_decoder_layers=4 --subword_regularization_alpha 0.1 \
+	--run_name 20018_baseline_identifier_codeenc_noreset_4ldecoder \
+	--program_mode identity --label_mode identifier \
+	--n_decoder_layers=4 --subword_regularization_alpha 0 \
 	--num_epochs 150 --save_every 10 --batch_size 32 --num_workers 16 --lr 1e-4 \
 	--train_filepath $DATA_CACHE/codesearchnet_javascript/javascript_train_supervised.jsonl.gz \
 	--eval_filepath $DATA_CACHE/codesearchnet_javascript/javascript_valid_0.jsonl.gz
