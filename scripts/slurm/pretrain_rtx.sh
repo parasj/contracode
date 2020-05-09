@@ -2,9 +2,9 @@
 #SBATCH --job-name=contrastive_pretrain
 #SBATCH --output=/home/eecs/paras/slurm/coderep/%j_pretrain.log
 #SBATCH --ntasks=1
-#SBATCH --mem=32gb
+#SBATCH --mem=200gb
 #SBATCH --gres=gpu:1
-#SBATCH --time=24:00:00
+#SBATCH --time=125:00:00
 #SBATCH --exclude=atlas,blaze,r16
 
 date;hostname;pwd
@@ -24,7 +24,7 @@ npm install
 python representjs/pretrain.py 20010_pretrain_b128 \
     --run_dir_base="/data/paras/coderep_runs" \
     --n_epochs=100 \
-    --batch_size=128 \
+    --batch_size=192 \
     --lr="8e-4" \
     --num_workers=32 \
     --train_filepath="/tmp/data_cache/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz" \
