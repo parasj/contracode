@@ -80,11 +80,17 @@ def pretrain(
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
 
+    # train_augmentations = [	
+    #     {"fn": "rename_variable", "prob": 0.25},
+    #     {"fn": "insert_var_declaration", "prob": 0.25},
+    #     {"fn": "terser", "prob": 0.5, "prob_mangle": 0.1},
+    #     {"fn": "sample_lines", "prob": 0.25, "prob_keep_line": 0.9}
+    # ] 
     train_augmentations = [	
-        {"fn": "rename_variable", "prob": 0.25},
-        {"fn": "insert_var_declaration", "prob": 0.25},
-        {"fn": "terser", "prob": 0.5, "prob_mangle": 0.1},
-        {"fn": "sample_lines", "prob": 0.25, "prob_keep_line": 0.9}
+        {"fn": "rename_variable"},
+        {"fn": "insert_var_declaration"},
+        {"fn": "terser"},
+        {"fn": "sample_lines"}
     ] 
     # Create training dataset and dataloader
     train_dataset = get_csnjs_dataset(train_filepath, label_mode="none", limit_size=limit_dataset_size)

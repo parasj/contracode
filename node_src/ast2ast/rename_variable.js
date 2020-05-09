@@ -14,7 +14,7 @@ function getRandomInt(max) {
     return Math.floor(Math.random() * Math.floor(max));
 }
 
-function rename_variable(ast, {prob = 0.5}) {
+function rename_variable(ast, {prob = 0.25}) {
     traverse(ast, {
         FunctionDeclaration(path) {
             if (Math.random() < prob) {

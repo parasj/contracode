@@ -19,7 +19,7 @@ const shuffle = (a) => {
 //     return out_lines.join("\n");
 // }
 
-module.exports = (js_src, {prob = 0.5, prob_keep_line = 0.5}) => {
+module.exports = (js_src, {prob = 0.25, prob_keep_line = 0.9}) => {
     const lines = js_src.split(/[\r\n]/);//.slice(1, -1);
     const n_lines = lines.length;
 

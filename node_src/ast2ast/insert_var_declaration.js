@@ -7,7 +7,7 @@ function(ASTNode, {optional_arguments}) -> List[AST]
 Transformations are applied via a flatMap
 */
 
-function insert_var_declaration(ast, {prob = 0.5}) {
+function insert_var_declaration(ast, {prob = 0.25}) {
     traverse(ast, {
         FunctionDeclaration(path) {
             if (Math.random() < prob) {

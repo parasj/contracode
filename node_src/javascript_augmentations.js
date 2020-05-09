@@ -20,7 +20,7 @@ class JavascriptAugmentations {
     }
 
     srcToAst(jsSrc) {
-        return parser.parse(jsSrc, {sourceType: "module", plugins: ["jsx", "es2015", "es6"], errorRecovery: true});
+        return parser.parse(jsSrc, {sourceType: "module", plugins: ["jsx", "es2015", "es6", "flow"], errorRecovery: true});
     }
 
     astToSrc(ast) {

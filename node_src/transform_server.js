@@ -30,7 +30,6 @@ if (cluster.isMaster) {
         }).on('end', () => {
             body = Buffer.concat(body).toString();
             const data = JSON.parse(body);
-            console.log("got data", data);
             const replyString = JSON.stringify(
                 data.map(x => javascriptAugmenter.transform(x['src'], x['augmentations'])));
             res.end(replyString);

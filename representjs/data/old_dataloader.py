@@ -46,12 +46,12 @@ def _augment(transform_payload: List[dict]) -> List[str]:
 _headers = {'Content-type': 'application/json', 'Accept': 'application_json'}
 def _augment_server(transform_payload: List[dict]) -> List[str]:
     # Transform code
-    transform_payload = json.dumps(transform_payload)
+    transform_payload = transform_payload
     response = None
     try:
         response = requests.post(
             'http://127.0.0.1:3000',
-            data=transform_payload,
+            data=json.dumps(transform_payload),
             headers=_headers,
             timeout=10)
         assert response.status_code == 200
