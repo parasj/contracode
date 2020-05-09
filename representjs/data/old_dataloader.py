@@ -1,6 +1,7 @@
 import json
 import os
 from typing import List
+import requests
 
 import sentencepiece as spm
 import torch
@@ -42,6 +43,31 @@ def _augment(transform_payload: List[dict]) -> List[str]:
     return transformed
 
 
+_headers = {'Content-type': 'application/json', 'Accept': 'application_json'}
+def _augment_server(transform_payload: List[dict]) -> List[str]:
+    # Transform code
+    transform_payload = json.dumps(transform_payload)
+    response = None
+    try:
+        response = requests.post(
+            'http://127.0.0.1:3000',
+            data=transform_payload,
+            headers=_headers,
+            timeout=10)
+        assert response.status_code == 200
+        transformed = response.json()
+        assert isinstance(transformed, list)
+    except Exception as e:
+        # Transformation failed in Node.js (got malformed stdout), so don't transform
+        logger.error(f"Exception in _augment_server: {e}")
+        logger.error(f"Exception in _augment_server transform input: {transform_payload}")
+        if response:
+            logger.error(f"Exception in _augment_server transform status code: {response.status_code}")
+            logger.error(f"Exception in _augment_server transform response: {response}")
+        transformed = [prog["src"] for prog in transform_payload]
+    return transformed
+
+
 def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProcessor, program_mode: str,
                            subword_regularization_alpha: float, max_length: int):
     assert program_mode in ["contrastive", "augmentation", "identity"]
@@ -67,7 +93,7 @@ def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProce
             if program_mode == "contrastive":
                 # Augment each input function twice
                 transform_payload = transform_payload + transform_payload
-            X = _augment(transform_payload)
+            X = _augment_server(transform_payload)
         else:
             X = [prog["function"] for prog in examples]
 
