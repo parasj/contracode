@@ -1,5 +1,6 @@
 import os
 import random
+import time
 
 import fire
 import numpy as np
@@ -72,7 +73,7 @@ def pretrain(
     np.random.seed(seed)
     random.seed(seed)
 
-    run_dir = RUN_DIR / run_name
+    run_dir = RUN_DIR / "{}_{}".format(run_name, int(time.time()))
     run_dir.mkdir(exist_ok=True, parents=True)
     logger.add(str((run_dir / "train.log").resolve()))
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
@@ -94,15 +95,12 @@ def pretrain(
     ]	
     # Create training dataset and dataloader
     train_dataset = get_csnjs_dataset(train_filepath, label_mode="none", limit_size=limit_dataset_size)
-#     test_transforms = transforms.ComposeTransform([
-#         transforms.WindowLineCropTransform(augment_window_crop_size),
-#         transforms.NumericalizeTransform(DEFAULT_SPM_UNIGRAM_FILEPATH, subword_regularization_alpha, max_sequence_length),
-#         transforms.CanonicalizeKeysTransform(data='function_ids'),
-#     ])
-#     augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms, contrastive=True)
-#     collate_wrapper = PadCollateWrapper(contrastive=True, pad_id=pad_id)
-#     train_loader = DataLoader(augmented_dataset, batch_size, shuffle=True, collate_fn=collate_wrapper, num_workers=num_workers,
-#                               drop_last=True)
+    # test_transforms = transforms.ComposeTransform([ transforms.WindowLineCropTransform(augment_window_crop_size),
+    # transforms.NumericalizeTransform(DEFAULT_SPM_UNIGRAM_FILEPATH, subword_regularization_alpha, max_sequence_length),
+    # transforms.CanonicalizeKeysTransform(data='function_ids'), ]) augmented_dataset = AugmentedJSDataset(train_dataset,
+    # test_transforms, contrastive=True) collate_wrapper = PadCollateWrapper(contrastive=True, pad_id=pad_id) train_loader =
+    # DataLoader(augmented_dataset, batch_size, shuffle=True, collate_fn=collate_wrapper, num_workers=num_workers,
+    # drop_last=True)
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = javascript_dataloader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True,
