@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 
 from representjs.models.code_moco import CodeEncoder
-from representjs.models.positional_encoding import PositionalEncoding
 
 
 class TransformerModel(nn.Module):

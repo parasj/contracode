@@ -1,6 +1,5 @@
 import json
 import os
-import re
 from typing import List
 
 import sentencepiece as spm
@@ -8,17 +7,9 @@ import torch
 from loguru import logger
 from torch.nn.utils.rnn import pad_sequence
 
-from representjs.data.csn_js_jsonl import JSONLinesDataset
+from data.jsonl_dataset import JSONLinesDataset
+from representjs.data.util import normalize_program
 from representjs.data.util import dispatch_to_node
-
-_newline_regex = re.compile(r'\n')
-_whitespace_regex = re.compile(r'[ \t\n]+')
-
-
-def normalize_program(fn: str):
-    fn = _newline_regex.sub(r' [EOL]', fn)
-    fn = _whitespace_regex.sub(' ', fn)
-    return fn
 
 
 def _augment(transform_payload: List[dict]) -> List[str]:

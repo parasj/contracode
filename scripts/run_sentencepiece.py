@@ -1,18 +1,9 @@
-import gzip
-import json
-import jsonlines
-import io
-import os
-import re
-from typing import List
-
 import fire
 import sentencepiece as spm
-import torch
 import tqdm
 
 from representjs.data.csn_js_loader import normalize_program
-from data.csn_js_jsonl import JSONLinesDataset, normalize_docstring
+from data.jsonl_dataset import JSONLinesDataset, normalize_docstring
 
 DEFAULT_INPUT = "data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl"
 DEFAULT_OUTPUT = "data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.txt"
