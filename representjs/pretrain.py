@@ -14,8 +14,8 @@ from torch.utils.data import DataLoader
 
 from representjs import RUN_DIR, CSNJS_DIR
 from representjs.data import transforms
-from representjs.data.csn_js.augmented_dataset import AugmentedJSDataset, PadCollateWrapper
-from representjs.data.csn_js.jsonl_dataset import get_csnjs_dataset
+from representjs.data.augmented_dataset import AugmentedJSDataset, PadCollateWrapper
+from representjs.data.jsonl_dataset import get_csnjs_dataset
 from representjs.models.code_moco import CodeMoCo
 from representjs.utils import accuracy, count_parameters
 

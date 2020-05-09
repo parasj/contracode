@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from representjs.data.transforms import Transform, WindowLineCropTransform, CanonicalizeKeysTransform, ComposeTransform
 from representjs import CSNJS_DIR
-from representjs.data.csn_js.jsonl_dataset import JSONLinesDataset, get_csnjs_dataset
+from data.jsonl_dataset import JSONLinesDataset, get_csnjs_dataset
 from representjs.pretrain import DEFAULT_CSNJS_TRAIN_FILEPATH
 
 

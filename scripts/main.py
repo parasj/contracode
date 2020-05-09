@@ -12,7 +12,7 @@ import tqdm
 import wandb
 
 from representjs import RUN_DIR
-from data.csn_js.jsonl_dataset import get_csnjs_dataset
+from data.jsonl_dataset import get_csnjs_dataset
 from representjs.data.csn_js_loader import javascript_dataloader
 from representjs.utils import count_parameters
 from representjs.models.transformer import TransformerModel

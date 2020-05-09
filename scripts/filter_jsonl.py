@@ -1,17 +1,14 @@
 import gzip
 import json
 import jsonlines
-import io
-import os
 import re
 
 import pathlib
 import fire
-import torch
 import tqdm
 from loguru import logger
 
-from data.csn_js.jsonl_dataset import _fix_json_dict
+from data.jsonl_dataset import _fix_json_dict
 from representjs.data.util import dispatch_to_node
 
 _valid_identifier_regex = re.compile(r'^[a-zA-Z_$][0-9a-zA-Z_$]*$')
