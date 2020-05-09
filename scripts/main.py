@@ -11,12 +11,12 @@ import torch.nn.functional as F
 import tqdm
 import wandb
 
+from data.old_dataloader import javascript_dataloader
 from representjs import RUN_DIR
 from data.jsonl_dataset import get_csnjs_dataset
-from representjs.data.csn_js_loader import javascript_dataloader
-from representjs.utils import count_parameters
-from representjs.models.transformer import TransformerModel
-from representjs.decode import ids_to_strs, beam_search_decode
+from utils import count_parameters
+from models.transformer import TransformerModel
+from decode import ids_to_strs, beam_search_decode
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"

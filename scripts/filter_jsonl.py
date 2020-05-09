@@ -9,7 +9,7 @@ import tqdm
 from loguru import logger
 
 from data.jsonl_dataset import _fix_json_dict
-from representjs.data.util import dispatch_to_node
+from data.util import dispatch_to_node
 
 _valid_identifier_regex = re.compile(r'^[a-zA-Z_$][0-9a-zA-Z_$]*$')
 
