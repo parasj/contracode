@@ -7,8 +7,7 @@ from torch.utils.data import Dataset
 
 from representjs.data.transforms import Transform, WindowLineCropTransform, CanonicalizeKeysTransform, ComposeTransform
 from representjs import CSNJS_DIR
-from data.jsonl_dataset import JSONLinesDataset, get_csnjs_dataset
-from representjs.pretrain import DEFAULT_CSNJS_TRAIN_FILEPATH
+from representjs.data.jsonl_dataset import JSONLinesDataset, get_csnjs_dataset
 
 
 class AugmentedJSDataset(Dataset):
@@ -71,6 +70,7 @@ class PadCollateWrapper:
 
 
 if __name__ == "__main__":
+    from representjs.pretrain import DEFAULT_CSNJS_TRAIN_FILEPATH
     SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
     train_dataset = get_csnjs_dataset(DEFAULT_CSNJS_TRAIN_FILEPATH, label_mode="none", limit_size=100)
     test_transforms = ComposeTransform([
