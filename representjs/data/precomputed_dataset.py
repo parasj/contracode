@@ -1,3 +1,4 @@
+import gzip
 import pathlib
 import pickle
 import re
@@ -29,8 +30,12 @@ class PrecomputedDataset(torch.utils.data.Dataset):
         super().__init__()
         full_path = pathlib.Path(path).resolve()
         logger.debug(f"Loading {full_path}")
-        with full_path.open("rb") as f:
-            self.examples = pickle.load(f)
+        if str(path).endswith('.gz'):
+            with gzip.open(str(full_path), 'rb') as f:
+                self.examples = pickle.load(f)
+        else:
+            with full_path.open("rb") as f:
+                self.examples = pickle.load(f)
         logger.debug(f"Loaded {len(self.examples)} examples")
         if limit_size > 0:
             self.examples = self.examples[:limit_size]

@@ -65,7 +65,8 @@ def pretrain(
     slurm_job_id, slurm_job_hostname = os.environ.get('SLURM_JOB_ID'), os.environ.get('SLURM_JOB_NODELIST')
     config = locals()
     logger.info("Training configuration: {}".format(config))
-    logger.info("CUDA_VISIBLE_DEVICES = '{}', CUDA_DEVICE_ORDER = '{}'".format(os.environ.get('CUDA_VISIBLE_DEVICES'), os.environ.get('CUDA_DEVICE_ORDER')))
+    logger.info("CUDA_VISIBLE_DEVICES = '{}', CUDA_DEVICE_ORDER = '{}'".format(os.environ.get('CUDA_VISIBLE_DEVICES'),
+                                                                               os.environ.get('CUDA_DEVICE_ORDER')))
 
     assert not use_cuda or torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
     torch.manual_seed(seed)
@@ -83,49 +84,19 @@ def pretrain(
     pad_id = sp.PieceToId("[PAD]")
 
     # Create training dataset and dataloader
-    # if False:
-        # train_augmentations = [	
-        #     {"fn": "rename_variable", "prob": 0.25},
-        #     {"fn": "insert_var_declaration", "prob": 0.25},
-        #     {"fn": "terser", "prob": 0.5, "prob_mangle": 0.1},
-        #     {"fn": "sample_lines", "prob": 0.25, "prob_keep_line": 0.9}
-        # ] 
-    #     train_augmentations = [	
-    #         {"fn": "rename_variable"},
-    #         {"fn": "insert_var_declaration"},
-    #         {"fn": "terser"},
-    #         {"fn": "sample_lines"}
-    #     ] 
-    #     train_dataset = get_csnjs_dataset(train_filepath, label_mode="none", limit_size=limit_dataset_size)
-    #     logger.info(f"Training dataset size: {len(train_dataset)}")
-
-    #     if True:
-    #         from data.augmented_dataset import AugmentedJSDataset, PadCollateWrapper
-    #         test_transforms = transforms.ComposeTransform([
-    #             # transforms.WindowLineCropTransform(augment_window_crop_size),
-    #             transforms.NodeServerTransform(train_augmentations),
-    #             transforms.NumericalizeTransform(DEFAULT_SPM_UNIGRAM_FILEPATH, subword_regularization_alpha, max_sequence_length),
-    #             transforms.CanonicalizeKeysTransform(data='function_ids'),
-    #         ])
-    #         augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms, contrastive=True)
-    #         collate_wrapper = PadCollateWrapper(contrastive=True, pad_id=pad_id)
-    #         train_loader = torch.utils.data.DataLoader(augmented_dataset, batch_size, shuffle=True, collate_fn=collate_wrapper, num_workers=num_workers, drop_last=True)
-    #     else:
-    #         from data.old_dataloader import javascript_dataloader
-    #         train_loader = javascript_dataloader(
-    #             train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True,
-    #             augmentations=train_augmentations, sp=sp, program_mode=program_mode,
-    #             subword_regularization_alpha=subword_regularization_alpha)
     assert train_filepath.endswith(".pickle")
+
     def pad_collate(batch):
         B = len(batch)
         if program_mode == "contrastive":
             X1, X2 = zip(*batch)
             X = X1 + X2
+        else:
+            raise NotImplementedError()
 
         # Create padded tensor for batch, [B, T] or [2B, T]
         X = pad_sequence(X, batch_first=True, padding_value=pad_id)
-    
+
         if program_mode == "contrastive":
             # Reshape X to [B, 2, T]
             T = X.size(-1)
@@ -133,9 +104,12 @@ def pretrain(
             X = torch.transpose(X, 0, 1)
             assert X.shape == (B, 2, T)
         return (X, None)
-    train_dataset = PrecomputedDataset(train_filepath, min_alternatives=2, program_mode="contrastive", limit_size=limit_dataset_size, sp=sp, subword_regularization_alpha=subword_regularization_alpha)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, collate_fn=pad_collate, num_workers=num_workers, drop_last=True)
+
+    train_dataset = PrecomputedDataset(train_filepath, min_alternatives=2, program_mode="contrastive",
+                                       limit_size=limit_dataset_size, sp=sp,
+                                       subword_regularization_alpha=subword_regularization_alpha)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=pad_collate,
+                                               num_workers=num_workers, drop_last=True)
 
     # Create model
     model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
