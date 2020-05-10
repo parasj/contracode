@@ -207,7 +207,8 @@ def train(
 
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-        eval_loss = _evaluate(model, eval_loader, sp, use_cuda=use_cuda)
+        max_decode_len = 20 if label_mode == "identifier" else 200
+        eval_loss = _evaluate(model, eval_loader, sp, use_cuda=use_cuda, max_decode_len=max_decode_len)
         logger.info(f"Evaluation loss after epoch {epoch} ({global_step} steps): {eval_loss:.4f}")
         wandb.log({
             f"label-{label_mode}/eval_loss": eval_loss
