@@ -5,7 +5,7 @@ from loguru import logger
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 
-from data.transforms import Transform, WindowLineCropTransform, CanonicalizeKeysTransform, ComposeTransform
+from data.transforms import Transform, WindowLineCropTransform, CanonicalizeKeysTransform, ComposeTransform, NodeServerTransform, NumericalizeTransform
 from data.jsonl_dataset import JSONLinesDataset
 
 
@@ -70,13 +70,21 @@ class PadCollateWrapper:
 
 if __name__ == "__main__":
     from representjs import CSNJS_DIR
-    from pretrain import DEFAULT_CSNJS_TRAIN_FILEPATH
+    # from pretrain import DEFAULT_CSNJS_TRAIN_FILEPATH
+    DEFAULT_CSNJS_TRAIN_FILEPATH = "/home/ajay/coderep/representjs/data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl"
     from data.jsonl_dataset import get_csnjs_dataset
     SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
     train_dataset = get_csnjs_dataset(DEFAULT_CSNJS_TRAIN_FILEPATH, label_mode="none", limit_size=100)
+    train_augmentations = [	
+        {"fn": "rename_variable"},
+        {"fn": "insert_var_declaration"},
+        {"fn": "terser"},
+        {"fn": "sample_lines"}
+    ] 
     test_transforms = ComposeTransform([
-        WindowLineCropTransform(6),
-        # NumericalizeTransform(SPM_UNIGRAM_FILEPATH, 0., 1024),
+        NodeServerTransform(train_augmentations),
+        # WindowLineCropTransform(6),
+        NumericalizeTransform(SPM_UNIGRAM_FILEPATH, 0., 1024),
         CanonicalizeKeysTransform(data='function'),
     ])
     augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms, contrastive=True)

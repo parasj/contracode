@@ -6,6 +6,7 @@ from loguru import logger
 from torchtext.data import load_sp_model
 
 from data.util import Timer, normalize_program
+from data.old_dataloader import _augment_server
 
 
 class Transform:
@@ -93,3 +94,16 @@ class ComposeTransform(Transform):
         for transform in self.transforms:
             sample = transform(sample)
         return sample
+
+
+class NodeServerTransform(Transform):
+    def __init__(self, augmentations):
+        self.augmentations = augmentations
+
+    def __call__(self, sample):
+        transformed = _augment_server([{
+            "src": sample["function"],
+            "augmentations": self.augmentations
+        }])
+        assert len(transformed) == 1
+        return {"function": transformed[0]}

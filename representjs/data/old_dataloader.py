@@ -53,7 +53,7 @@ def _augment_server(transform_payload: List[dict]) -> List[str]:
             'http://127.0.0.1:3000',
             data=json.dumps(transform_payload),
             headers=_headers,
-            timeout=10)
+            timeout=5)
         assert response.status_code == 200
         transformed = response.json()
         assert isinstance(transformed, list)
