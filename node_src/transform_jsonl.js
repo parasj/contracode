@@ -7,7 +7,7 @@ const javascriptAugmenter = new JavascriptAugmentations();
 
 function escapeRegExp(string) {
     return string.replace(/[.*+\-?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-  }
+}
 
 
 function _fix_json_dict(json_dict, src_function_key, src_method_name_key) {
@@ -35,12 +35,15 @@ const augmentations = [
 
 const numAlternatives = 20;
 
-var outFilepath = '/home/ajay/coderep/representjs/data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train_augmented.jsonl';
+// var inFilepath = 'javascript_dedupe_definitions_nonoverlap_v2_train.jsonl';
+var inFilepath = process.argv[2];
+// var outFilepath = '/home/ajay/coderep/representjs/data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train_augmented.jsonl';
+var outFilepath = process.argv[3];
 var writeStream = fs.createWriteStream(outFilepath)
 var numProcessed = 0;
 var startTime = Date.now();
 
-lineReader.eachLine('/dev/shm/ajay/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl', function(line, last) {
+lineReader.eachLine(inFilepath, function(line, last) {
     var data = JSON.parse(line);
     _fix_json_dict(data, 'function', 'identifier');
     const identifier = data['identifier'];
@@ -59,12 +62,12 @@ lineReader.eachLine('/dev/shm/ajay/javascript_dedupe_definitions_nonoverlap_v2_t
     if (numProcessed % 1000 == 0) {
         var elapsed = Date.now() - startTime;
         var linesPerSecond = numProcessed / (elapsed / 1000);
-        var remaining = (1843099 - numProcessed) / linesPerSecond / 60;
-        console.log(`Processed ${numProcessed} lines (${linesPerSecond} per sec, ${remaining} minutes remaining)`)
+        var remaining = (1843099 - numProcessed) / linesPerSecond / 3600;
+        console.log(`[${inFilepath}] Processed ${numProcessed} lines (${linesPerSecond} per sec, ${remaining} hours remaining)`)
     }
 
     if (last) {
-        console.log("Done reading!");
+        console.log(`[${inFilepath}] Done reading!`);
 
         return false;
     }
