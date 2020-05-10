@@ -10,6 +10,7 @@
     "async": "^3.2.0",
     "cli-progress": "^3.8.1",
     "glob": "^7.1.6",
+    "line-reader": "^0.4.0",
     "prettier": "^2.0.5",
     "random-words": "^1.1.1",
     "terser": "^4.6.13"
