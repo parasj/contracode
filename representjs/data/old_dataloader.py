@@ -69,7 +69,7 @@ def _augment_server(transform_payload: List[dict]) -> List[str]:
 
 
 def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProcessor, program_mode: str,
-                           subword_regularization_alpha: float, max_length: int):
+                           subword_regularization_alpha: float, max_length: int, max_target_length: int=256):
     assert program_mode in ["contrastive", "augmentation", "identity"]
     bos_id = sp.PieceToId("<s>")
     eos_id = sp.PieceToId("</s>")
@@ -116,7 +116,7 @@ def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProce
         # Create padded tensor for labels (good for seq2seq tasks)
         if "label" in examples[0]:
             label = [sp.EncodeAsIds(ex["label"]) for ex in examples]
-            label = [torch.tensor([bos_id] + ids + [eos_id]) for ids in label]
+            label = [torch.tensor([bos_id] + ids[:(max_target_length - 2)] + [eos_id]) for ids in label]
             label = pad_sequence(label, batch_first=True, padding_value=pad_id)
         else:
             label = None
@@ -140,6 +140,7 @@ def javascript_dataloader(
         program_mode: str = "identity",
         subword_regularization_alpha: float = 0,
         max_length: int = 1024,
+        max_target_length: int = 256,
         spm_unigram_path: str = None,
         **kwargs):
     """
@@ -155,7 +156,7 @@ def javascript_dataloader(
     if sp is None:
         sp = spm.SentencePieceProcessor()
         sp.load(spm_unigram_path)
-    collate_fn = get_javascript_collate(augmentations, sp, program_mode, subword_regularization_alpha, max_length)
+    collate_fn = get_javascript_collate(augmentations, sp, program_mode, subword_regularization_alpha, max_length, max_target_length=max_target_length)
     return torch.utils.data.DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 
