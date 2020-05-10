@@ -82,6 +82,7 @@ def train(
 
         # Model
         n_decoder_layers=4,
+        resume_path: str="",
 
         # Optimization
         train_decoder_only: bool=False,
@@ -137,15 +138,30 @@ def train(
     # Create eval dataset and dataloader
     logger.info(f"Eval data path {eval_filepath}")
     eval_dataset = get_csnjs_dataset(eval_filepath, label_mode=label_mode, limit_size=limit_dataset_size)
-    logger.info(f"Eval dataset size: {len(train_dataset)}")
+    logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = javascript_dataloader(
         eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,
         augmentations=eval_augmentations, sp=sp, program_mode=eval_program_mode,
         subword_regularization_alpha=subword_regularization_alpha)
 
+    # Create model
     model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
-    # model = TransformerModel(ntoken=sp.GetPieceSize(), ninp=512, pad_id=sp.PieceToId("[PAD]"))
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
+
+    # Load checkpoint
+    if resume_path:
+        checkpoint = torch.load(resume_path)
+        pretrained_state_dict = checkpoint['model_state_dict']
+        encoder_state_dict = {}
+        for key, value in pretrained_state_dict.items():
+            # TODO: Try loading encoder_k -- has ema on parameters
+            if key.startswith('encoder_k.') and 'project_layer' not in key:
+                remapped_key = key[len('encoder_k.'):]
+                encoder_state_dict[remapped_key] = value
+        model.encoder.load_state_dict(encoder_state_dict)
+        logger.info(f"Loaded state dict from {resume_path}")
+
+    # Set up optimizer
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
     params = model.decoder.parameters() if train_decoder_only else model.parameters()

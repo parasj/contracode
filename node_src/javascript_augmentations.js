@@ -71,7 +71,7 @@ class JavascriptAugmentations {
                     is_ast = is_ast_new;
                 }
             } catch (e) {
-                console.error("Could not transform object!", transformationObj, ", got error ", e);
+                // console.error("Could not transform object!", transformationObj, ", got error ", e);
             }
         }
 
