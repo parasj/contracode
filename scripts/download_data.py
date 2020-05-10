@@ -1,7 +1,5 @@
-import argparse
 from pathlib import Path
 import os
-from pprint import pprint
 
 from tqdm import tqdm
 
@@ -32,12 +30,13 @@ def dl_cmds(dataset_path: str, extract=False):
 if __name__ == "__main__":
     cmds = []
     # cmds.extend(dl_cmds("js150k/data.tar.gz"))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", True))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_test_0.jsonl.gz", True))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_valid_0.jsonl.gz", True))
-    cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", True))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", True))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", True))
+    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", False))
+    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_test_0.jsonl.gz", False))
+    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_valid_0.jsonl.gz", False))
+    cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", False))
+    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", False))
+    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", False))
+    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_augmented.pickle.gz", False))
 
     print("\n".join(cmds))
 
