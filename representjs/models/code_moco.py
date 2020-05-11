@@ -24,6 +24,29 @@ class CodeMoCo(MoCoTemplate):
         return super().forward(im_q, im_k)
 
 
+class CodeMLM(nn.Module):
+    def __init__(self, n_tokens, d_model=512, pad_id=None):
+        super().__init__()
+        self.encoder = CodeEncoder(n_tokens, project=False, pad_id=pad_id, d_model=d_model, **kwargs)
+        self.head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.LayerNorm(d_model)
+        )
+
+    def forward(self, im):
+        """
+        Input:
+            im: a batch of query images
+        Output:
+            logits
+        """
+        features = self.encoder(im)  # LxBxD
+        features = self.head(features)  # LxBxD
+        logits = torch.matmul(features, self.encoder.embedding.weight.transpose(0, 1))  # [L, B, ntok]
+        return torch.transpose(logits, 0, 1)  # [B, T, ntok]
+
+
 class CodeEncoder(nn.Module):
     def __init__(self, n_tokens, d_model=512, d_rep=256, n_head=8, n_encoder_layers=6, d_ff=2048, dropout=0.1,
                  activation="relu", norm=True, pad_id=None, project=False):

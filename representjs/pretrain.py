@@ -17,7 +17,7 @@ from representjs import RUN_DIR, CSNJS_DIR
 from data import transforms
 from data.precomputed_dataset import PrecomputedDataset
 from data.jsonl_dataset import get_csnjs_dataset
-from models.code_moco import CodeMoCo
+from models.code_moco import CodeMoCo, CodeMLM
 from utils import accuracy, count_parameters
 
 DEFAULT_CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
@@ -37,6 +37,27 @@ def training_step(model, batch, use_cuda=False):
     return {'loss': loss, 'log': logs}
 
 
+def training_step_mlm(model, batch, pad_id, mask_id, use_cuda=False):
+    seq, _ = batch  # BxL
+    if use_cuda:
+        seq = seq.cuda()
+    # Mask sequence
+    # TODO: Should mask 15% of each code sequence, not 15% of all tokens
+    seq_masked = seq.clone()
+    mask = torch.rand(device=seq.device) < 0.15
+    seq_masked[mask].fill_(mask_id)
+    assert isinstance(model, CodeMLM)
+    output = model(seq_masked)  # BxLxVocab
+    target = None # TODO: what is the target?
+    loss = F.cross_entropy(output, target)
+    # TODO: Remove accuracy?
+    acc1, acc5 = accuracy(output, target, topk=(1, 5))
+    logs = {'pretrain/loss': loss.item(), 'pretrain/acc@1': acc1[0].item(),
+            'pretrain/acc@5': acc5[0].item(), 'pretrain/queue_ptr': model.module.queue_ptr.item()}
+    return {'loss': loss, 'log': logs}
+
+
+
 def pretrain(
         run_name: str,
 
@@ -49,6 +70,7 @@ def pretrain(
         augment_window_crop_size=6,
         subword_regularization_alpha: float = 0,
         program_mode="contrastive",
+        loss_mode="infonce",
 
         # Optimization
         num_epochs: int = 100,
@@ -112,8 +134,12 @@ def pretrain(
                                                num_workers=num_workers, drop_last=True)
 
     # Create model
-    model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
-    logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
+    if self.loss == "infonce":
+        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
+        logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
+    elif self.loss == "mlm":
+        model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id)
+        logger.info(f"Created CodeMLM model with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
     params = model.parameters()
@@ -127,8 +153,11 @@ def pretrain(
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
         for batch in pbar:
             optimizer.zero_grad()
-            train_metrics = training_step(model, batch, use_cuda=use_cuda)
-            loss = train_metrics["loss"]
+            if loss_mode == "infonce":
+                train_metrics = training_step(model, batch, use_cuda=use_cuda)
+                loss = train_metrics["loss"]
+            elif loss_mode == "mlm":
+                train_metrics = training_step_mlm(model, batch, use_cuda=use_cuda)
             loss.backward()
             optimizer.step()
 
