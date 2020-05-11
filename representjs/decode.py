@@ -22,13 +22,13 @@ def greedy_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=20, s
     with torch.no_grad():
         Y_hat = torch.zeros(B, max_decode_len, device=X.device).long()
         Y_hat.fill_(sp.PieceToId("<s>"))
-        for t in range(max_decode_len-1):
+        for t in range(max_decode_len - 1):
             logits = model(X, Y_hat)
             if sample:
                 idx_t = torch.distributions.categorical.Categorical(logits=logits[:, t, :]).sample()
             else:
                 idx_t = logits[:, t, :].argmax(dim=-1)
-            Y_hat[:, t+1] = idx_t
+            Y_hat[:, t + 1] = idx_t
     Y_hat = Y_hat.cpu().numpy()
     Y_hat_str = ids_to_strs(Y_hat, sp)
     model.train()
@@ -47,7 +47,7 @@ def beam_search_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=
         sequences = [(torch.zeros(B, max_decode_len).long() + bos_id,
                       torch.zeros(B))]
         # walk over each item in output sequence
-        for t in range(max_decode_len-1):
+        for t in range(max_decode_len - 1):
             all_candidates = []
             # expand each current candidate
             for Y_hat, scores in sequences:
@@ -55,9 +55,9 @@ def beam_search_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=
                 logits_t = logits[:, t, :]
                 logprobs_t = F.log_softmax(logits_t, dim=-1).to(scores.device)  # [B, V] tensor
                 for j in range(V):
-                    log_p_j = logprobs_t[:, j] # log p(Y_t=j | Y_{<t-1}, X)
+                    log_p_j = logprobs_t[:, j]  # log p(Y_t=j | Y_{<t-1}, X)
                     candidate_Y_hat = Y_hat.clone()
-                    candidate_Y_hat[:, t+1] = j
+                    candidate_Y_hat[:, t + 1] = j
                     candidate = (candidate_Y_hat, scores + log_p_j)
                     all_candidates.append(candidate)
             # stack candidates
@@ -70,7 +70,7 @@ def beam_search_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=
             # set beam
             sequences = [(topk_Y[:, j, :], topk_scores[:, j]) for j in range(k)]
             # TODO: exit early if all sentences in all beam sequences contain </s>
-    
+
     # stack sequences
     beam_Y, beam_scores = zip(*sequences)
     beam_Y = torch.stack(beam_Y, dim=1)  # [B, k, T]
