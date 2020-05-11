@@ -10,6 +10,8 @@ class TransformerModel(nn.Module):
     def __init__(self, n_tokens, d_model=512, d_rep=128, n_head=8, n_encoder_layers=6, d_ff=2048, dropout=0.1,
                  activation="relu", norm=True, pad_id=None, n_decoder_layers=6):
         super(TransformerModel, self).__init__()
+        assert norm
+        assert pad_id is not None
         self.config = {k: v for k, v in locals().items() if k != 'self'}
 
         # Encoder
@@ -17,11 +19,8 @@ class TransformerModel(nn.Module):
 
         # Decoder
         decoder_layer = nn.TransformerDecoderLayer(d_model, n_head, d_ff, dropout, activation)
-        assert norm
         decoder_norm = nn.LayerNorm(d_model) if norm else None
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_decoder_layers, norm=decoder_norm)
-
-        assert pad_id != None
 
     def forward(self, src_tok_ids, tgt_tok_ids):
         r"""
