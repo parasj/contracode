@@ -12,6 +12,8 @@ import tqdm
 import wandb
 
 from data.old_dataloader import javascript_dataloader
+from data.util import Timer
+from metrics.f1 import F1MetricMethodName
 from representjs import RUN_DIR
 from data.jsonl_dataset import get_csnjs_dataset
 from utils import count_parameters
@@ -33,36 +35,40 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
     pad_id = sp.PieceToId("[PAD]")
 
     with torch.no_grad():
-        # Decode a single batch by beam search for visualization
-        X, Y = next(iter(loader))
-        X, Y = X[:num_to_print], Y[:num_to_print]
-        if use_cuda:
-            X = X.cuda(0)
-        pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
-        for i in range(X.size(0)):
-            logger.info(f"Eval X:   \t\t\t{ids_to_strs(X[i], sp)}")
-            logger.info(f"Eval GT Y:\t\t\t{ids_to_strs(Y[i], sp)}")
-            for b in range(scores.size(1)):
-                logger.info(f"Eval beam (score={scores[i, b]:.3f}):\t{pred[i][b]}")
-
-        # Compute average loss
-        total_loss = 0
-        num_examples = 0
-        pbar = tqdm.tqdm(loader, desc=f"evalaute")
-        for X, Y in pbar:
+        with Timer() as t:
+            # Decode a single batch by beam search for visualization
+            X, Y = next(iter(loader))
+            X, Y = X[:num_to_print], Y[:num_to_print]
             if use_cuda:
-                X = X.cuda()
-                Y = Y.cuda()
-            # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
-            logits = model(X, Y[:, :-1])
-            loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
+                X = X.cuda(0)
+            pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
+            for i in range(X.size(0)):
+                logger.info(f"Eval X:   \t\t\t{ids_to_strs(X[i], sp)}")
+                logger.info(f"Eval GT Y:\t\t\t{ids_to_strs(Y[i], sp)}")
+                for b in range(scores.size(1)):
+                    logger.info(f"Eval beam (score={scores[i, b]:.3f}):\t{pred[i][b]}")
+        logger.debug(f"Decode time for {num_to_print} samples took {t.interval:.3f}")
 
-            # TODO: Compute Precision/Recall/F1 and BLEU
+        with Timer() as t:
+            # Compute average loss
+            total_loss = 0
+            num_examples = 0
+            pbar = tqdm.tqdm(loader, desc=f"evalaute")
+            for X, Y in pbar:
+                if use_cuda:
+                    X = X.cuda()
+                    Y = Y.cuda()
+                # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
+                logits = model(X, Y[:, :-1])
+                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
 
-            total_loss += loss.item() * X.size(0)
-            num_examples += X.size(0)
-            avg_loss = total_loss / num_examples
-            pbar.set_description(f"evaluate average loss {avg_loss:.4f}")
+                # TODO: Compute Precision/Recall/F1 and BLEU
+
+                total_loss += loss.item() * X.size(0)
+                num_examples += X.size(0)
+                avg_loss = total_loss / num_examples
+                pbar.set_description(f"evaluate average loss {avg_loss:.4f}")
+        logger.debug(f"Loss calculation took {t.interval:.3f}s")
 
         return avg_loss
 
@@ -73,6 +79,7 @@ def train(
         # Data
         train_filepath: str = CSNJS_TRAIN_FILEPATH,
         eval_filepath: str = CSNJS_VALID_FILEPATH,
+        test_filepath: str = CSNJS_TEST_FILEPATH,
         spm_filepath: str = SPM_UNIGRAM_FILEPATH,
         program_mode="identity",
         eval_program_mode="identity",
@@ -121,9 +128,6 @@ def train(
         {"fn": "insert_var_declaration", "prob": 0.5},
         {"fn": "rename_variable", "prob": 0.5}
     ]
-
-    eval_augmentations = []
-
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
@@ -143,12 +147,23 @@ def train(
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = javascript_dataloader(
         eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,
-        augmentations=eval_augmentations, sp=sp, program_mode=eval_program_mode,
+        augmentations=[], sp=sp, program_mode=eval_program_mode,
         subword_regularization_alpha=subword_regularization_alpha)
+
+    # Create test dataset and dataloader
+    logger.info(f"Test data path {test_filepath}")
+    test_dataset = get_csnjs_dataset(test_filepath, label_mode=label_mode, limit_size=limit_dataset_size)
+    logger.info(f"Test dataset size: {len(eval_dataset)}")
+    test_loader = javascript_dataloader(
+        test_dataset, batch_size=batch_size * 8, shuffle=False, num_workers=num_workers, sp=sp, program_mode="identity",
+        subword_regularization_alpha=0, augmentations=[])
 
     # Create model
     model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
+
+    # Make metric
+    metric = F1MetricMethodName()
 
     # Load checkpoint
     if resume_path:

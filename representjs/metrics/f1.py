@@ -55,4 +55,4 @@ class F1MetricMethodName:
         precision = tp / float(tp + fp) if (tp + fp) > 0 else 0.
         recall = tp / float(tp + fn) if (tp + fn) > 0 else 0.
         f1 = 2. * float(precision + recall) / float(precision + recall) if (precision + recall) > self.eps else 0
-        return {'precision': precision, 'recall': recall, 'f1': f1}
+        return precision, recall, f1
