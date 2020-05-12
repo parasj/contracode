@@ -73,7 +73,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
 
 def calculate_f1_metric(metric: F1MetricMethodName, model, test_loader, sp: spm.SentencePieceProcessor, use_cuda=True,
                         beam_search_k=5, max_decode_len=21):
-    with Timer as t:
+    with Timer() as t:
         n_examples = 0
         precision, recall, f1 = 0., 0., 0.
         pbar = tqdm.tqdm(test_loader, desc=f"test")

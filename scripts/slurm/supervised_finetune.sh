@@ -38,4 +38,5 @@ python representjs/main.py train --run_name 20020_identity_identifier_codeenc_no
   --train_filepath $DATA_CACHE/codesearchnet_javascript/javascript_train_supervised.jsonl.gz \
   --eval_filepath $DATA_CACHE/codesearchnet_javascript/javascript_valid_0.jsonl.gz \
   --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
-  --resume_path /work/paras/representjs/data/good_runs/10070/ckpt_pretrain_ep0002_step0095000.pth
+  --resume_path /work/paras/representjs/data/good_runs/10070/ckpt_pretrain_ep0002_step0095000.pth \
+  --limit_dataset_size 10000
