@@ -2,7 +2,7 @@
 #SBATCH --job-name=contrastive_pretrain_dist
 #SBATCH --output=/home/eecs/paras/slurm/coderep/%j_pretrain_dist.log
 #SBATCH --ntasks=1
-#SBATCH --mem=256000
+#SBATCH --mem=400000
 #SBATCH --time=125:00:00
 #SBATCH --exclude=atlas,blaze,r16,steropes
 
@@ -11,7 +11,7 @@ date;hostname;pwd
 free -mh
 
 export PATH="/data/paras/miniconda3/bin:$PATH"
-export DATA_CACHE="/data/paras/representjs_data"
+export DATA_CACHE="/dev/shm"
 
 echo "CUDA_VISIBLE_DEVICES = $CUDA_VISIBLE_DEVICES"
 echo "CUDA_DEVICE_ORDER = $CUDA_DEVICE_ORDER"
