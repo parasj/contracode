@@ -183,7 +183,7 @@ def train(
     model = model.cuda() if use_cuda else model
     wandb.watch(model, log='all')
     params = model.module.decoder.parameters() if train_decoder_only else model.parameters()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
+    optimizer = torch.optim.Adam(params, lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
     # scheduler = torch.optim.lr_scheduler.OneCycleLR(
     #     optimizer,
     #     lr,
