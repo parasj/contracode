@@ -89,7 +89,7 @@ def calculate_f1_metric(metric: F1MetricMethodName, model, test_loader, sp: spm.
                 recall += score_item
                 f1 += f1_item
                 n_examples += 1
-    logger.debug(f"Test set evaluation (F1) took {t.interval:.3s} over {n_examples} samples")
+    logger.debug(f"Test set evaluation (F1) took {t.interval:.3}s over {n_examples} samples")
     return precision / n_examples, recall / n_examples, f1 / n_examples
 
 
