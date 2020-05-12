@@ -4,7 +4,7 @@ from torch import nn
 
 class MoCoTemplate(nn.Module):
     """From https://github.com/facebookresearch/moco/blob/master/moco/builder.py"""
-    def __init__(self, d_rep=128, K=65536, m=.999, T=0.07, encoder_params={}):
+    def __init__(self, d_rep=128, K=61440, m=.999, T=0.07, encoder_params={}):  # 61440 = 2^12 * 3 * 5
         """
         d_rep: feature dimension (default: 128)
         K: queue size; number of negative keys (default: 65536)
