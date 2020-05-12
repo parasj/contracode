@@ -167,7 +167,7 @@ def train(
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
     wandb.watch(model, log='all')
-    params = model.decoder.parameters() if train_decoder_only else model.parameters()
+    params = model.module.decoder.parameters() if train_decoder_only else model.parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
     # scheduler = torch.optim.lr_scheduler.OneCycleLR(
     #     optimizer,
@@ -182,8 +182,8 @@ def train(
     for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         if train_decoder_only:
-            model.encoder.eval()
-            model.decoder.train()
+            model.module.encoder.eval()
+            model.module.decoder.train()
         else:
             model.train()
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
