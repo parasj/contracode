@@ -194,7 +194,8 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         batch_size=config["batch_size"],
         shuffle=False,
         collate_fn=pad_collate,
-        num_workers=config["num_workers"],
+        # num_workers=config["num_workers"],
+        num_workers=0,
         drop_last=True,
         pin_memory=True,
         sampler=train_sampler,
@@ -242,4 +243,5 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
 
 if __name__ == "__main__":
+    torch.multiprocessing.set_start_method('spawn')
     fire.Fire(pretrain)
