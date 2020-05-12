@@ -1,16 +1,16 @@
 #!/bin/bash
 #SBATCH --job-name=contrastive_pretrain
-#SBATCH --output=/home/eecs/paras/slurm/coderep/%j_supervised_baseline.log
+#SBATCH --output=/home/eecs/paras/slurm/coderep/%j_supervised_finetune.log
 #SBATCH --ntasks=1
 #SBATCH --mem=256000
 #SBATCH --time=125:00:00
 #SBATCH --exclude=atlas,blaze,r16
-
+set -x
 date;hostname;pwd
 free -mh
 
 export PATH="/data/paras/miniconda3/bin:$PATH"
-export DATA_CACHE="/dev/shm/paras"
+export DATA_CACHE="/data/paras/representjs_data"
 echo "CUDA_VISIBLE_DEVICES = $CUDA_VISIBLE_DEVICES"
 echo "CUDA_DEVICE_ORDER = $CUDA_DEVICE_ORDER"
 echo "SLURM_JOB_ID = $SLURM_JOB_ID"
@@ -19,7 +19,7 @@ gpustat -cup
 nvidia-smi
 free -m | awk 'NR==2{printf "Memory Usage: %s/%sMB (%.2f%%)\n", $3,$2,$3*100/$2 }'
 df -h | awk '$NF=="/"{printf "Disk Usage: %d/%dGB (%s)\n", $3,$2,$5}'
-top -bn1 | grep load | awk '{printf "CPU Load: %.2f\n", $(NF-2)}' 
+top -bn1 | grep load | awk '{printf "CPU Load: %.2f\n", $(NF-2)}'
 
 chmod 755 -R ~/slurm
 
@@ -37,4 +37,5 @@ python representjs/main.py train --run_name 20020_identity_identifier_codeenc_no
   --num_epochs 150 --save_every 5 --batch_size 16 --num_workers 8 --lr 1e-4 \
   --train_filepath $DATA_CACHE/codesearchnet_javascript/javascript_train_supervised.jsonl.gz \
   --eval_filepath $DATA_CACHE/codesearchnet_javascript/javascript_valid_0.jsonl.gz \
-  --resume_path $DATA_CACHE/good_runs/10070/ckpt_pretrain_ep0002_step0100000.pth
+  --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
+  --resume_path /work/paras/representjs/data/good_runs/10070/ckpt_pretrain_ep0002_step0095000.pth

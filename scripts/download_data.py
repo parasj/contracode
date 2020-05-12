@@ -33,7 +33,7 @@ if __name__ == "__main__":
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", False))
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_test_0.jsonl.gz", False))
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_valid_0.jsonl.gz", False))
-    cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", False))
+    cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", True))
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", False))
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", False))
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_augmented.pickle.gz", False))
