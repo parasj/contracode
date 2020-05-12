@@ -10,7 +10,7 @@ date;hostname;pwd
 free -mh
 
 export PATH="/data/paras/miniconda3/bin:$PATH"
-export DATA_CACHE="/dev/shm/paras"
+export DATA_CACHE="/data/paras/representjs/data/"
 echo "CUDA_VISIBLE_DEVICES = $CUDA_VISIBLE_DEVICES"
 echo "CUDA_DEVICE_ORDER = $CUDA_DEVICE_ORDER"
 echo "SLURM_JOB_ID = $SLURM_JOB_ID"
@@ -25,7 +25,7 @@ chmod 755 -R ~/slurm
 
 mkdir -p $DATA_CACHE
 chmod 755 $DATA_CACHE
-rsync -avhW --no-compress --progress /work/paras/representjs/data/codesearchnet_javascript "$DATA_CACHE"
+rsync -avhW --no-compress --progress /work/paras/data_cache/codesearchnet_javascript "$DATA_CACHE"
 
 cd /work/paras/representjs
 pip install torch

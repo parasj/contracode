@@ -1,12 +1,9 @@
 import gzip
 import pathlib
 import pickle
-import re
-from typing import Optional, Iterable
 
 import numpy as np
 import torch
-import tqdm
 from loguru import logger
 
 from data.util import normalize_program
