@@ -30,7 +30,7 @@ SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model"
 
 
 def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
-             num_to_print=8, beam_search_k=5, max_decode_len=20):
+              num_to_print=8, beam_search_k=5, max_decode_len=20):
     model.eval()
     pad_id = sp.PieceToId("[PAD]")
 
@@ -40,7 +40,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
             X, Y = next(iter(loader))
             X, Y = X[:num_to_print], Y[:num_to_print]
             if use_cuda:
-                X = X.cuda(0)
+                X = X.cuda()
             pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
             for i in range(X.size(0)):
                 logger.info(f"Eval X:   \t\t\t{ids_to_strs(X[i], sp)}")
@@ -56,8 +56,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
             pbar = tqdm.tqdm(loader, desc=f"evalaute")
             for X, Y in pbar:
                 if use_cuda:
-                    X = X.cuda()
-                    Y = Y.cuda()
+                    X, Y = X.cuda(), Y.cuda()
                 # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
                 logits = model(X, Y[:, :-1])
                 loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
@@ -69,8 +68,29 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
                 avg_loss = total_loss / num_examples
                 pbar.set_description(f"evaluate average loss {avg_loss:.4f}")
         logger.debug(f"Loss calculation took {t.interval:.3f}s")
-
         return avg_loss
+
+
+def calculate_f1_metric(metric: F1MetricMethodName, model, test_loader, sp: spm.SentencePieceProcessor, use_cuda=True,
+                        beam_search_k=5, max_decode_len=21):
+    with Timer as t:
+        n_examples = 0
+        precision, recall, f1 = 0., 0., 0.
+        pbar = tqdm.tqdm(test_loader, desc=f"test")
+        for X, Y in pbar:
+            if use_cuda:
+                X, Y = X.cuda(), Y.cuda()
+            pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
+            for i in range(X.size(0)):
+                gt_identifier = ids_to_strs(Y[i], sp)
+                top_beam = pred[i][0]
+                precision_item, score_item, f1_item = metric(top_beam, gt_identifier)
+                precision += precision_item
+                recall += score_item
+                f1 += f1_item
+                n_examples += 1
+    logger.debug(f"Test set evaluation (F1) took {t.interval:.3s} over {n_examples} samples")
+    return precision / n_examples, recall / n_examples, f1 / n_examples
 
 
 def train(
@@ -228,9 +248,11 @@ def train(
         max_decode_len = 20 if label_mode == "identifier" else 200
         eval_loss = _evaluate(model, eval_loader, sp, use_cuda=use_cuda, max_decode_len=max_decode_len)
         logger.info(f"Evaluation loss after epoch {epoch} ({global_step} steps): {eval_loss:.4f}")
-        wandb.log({
-            f"label-{label_mode}/eval_loss": eval_loss
-        }, step=global_step)
+        wandb.log({"epoch": epoch, f"label-{label_mode}/eval_loss": eval_loss}, step=global_step)
+
+        logger.info(f"Evaluating F1 score on test set")
+        precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda)
+        wandb.log({'epoch': epoch, 'test/precision': precision, 'test/recall': recall, 'test/f1': f1})
 
         # Save checkpoint
         if save_every and epoch % save_every == 0 or eval_loss < min_eval_loss:

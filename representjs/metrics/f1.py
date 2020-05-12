@@ -1,5 +1,5 @@
 import re
-from collections import Iterable, Counter
+from collections import Counter
 
 
 def gen_counter_items(counts: Counter):
