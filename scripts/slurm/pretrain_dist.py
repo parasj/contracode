@@ -35,7 +35,7 @@ pip install torch
 pip install -e .
 npm install
 
-python representjs/pretrain_distributed.py 20021_pretrain_dist --num_epochs=200 --batch_size=96 --lr=1e-4 --num_workers=16 \
+python representjs/pretrain_distributed.py 20025_pretrain_dist --num_epochs=200 --batch_size=128 --lr=1e-4 --num_workers=6 \
     --subword_regularization_alpha 0.1 --program_mode contrastive --label_mode contrastive --save_every 5000 \
     --train_filepath="$DATA_CACHE/codesearchnet_javascript/javascript_augmented.pickle.gz" \
     --spm_filepath="$DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model" \

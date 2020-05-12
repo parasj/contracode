@@ -95,14 +95,6 @@ def pretrain(
     config['run_dir'] = str(run_dir.resolve())
     logger.add(str((run_dir / "train.log").resolve()))
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
-    # NOTE: Should this be called by the 0th spawned process?
-    wandb.init(
-        name=run_name,
-        config=config,
-        job_type="training",
-        project="moco-pretrain",
-        entity="ml4code",
-    )
 
     # Create training dataset and dataloader
     # assert train_filepath.endswith(".pickle")
@@ -114,6 +106,16 @@ def pretrain(
 
 
 def pretrain_worker(gpu, ngpus_per_node, config):
+    if config["rank"] % ngpus_per_node == 0:
+        # NOTE: Should this be called by the 0th spawned process?
+        wandb.init(
+            name=config["run_name"],
+            config=config,
+            job_type="training",
+            project="moco-pretrain",
+            entity="ml4code",
+        )
+
     if gpu is not None:
         logger.info("Use GPU: {} for training".format(gpu))
 
@@ -237,7 +239,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
                     }
                     model_file = os.path.join(config['run_dir'], f"ckpt_pretrain_ep{epoch:04d}_step{global_step:07d}.pth")
                     logger.info(f"Saving checkpoint to {model_file}...")
-                    torch.save(checkpoint, str(model_file.resolve()))
+                    torch.save(checkpoint, model_file)
                     # wandb.save(model_file)
                     logger.info("Done.")
 
