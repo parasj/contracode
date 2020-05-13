@@ -13,8 +13,8 @@ free -mh
 
 [ -z "$CHECKPOINT" ] && { echo "Need to set CHECKPOINT"; exit 1; }
 
-export PATH="/data/paras/miniconda3/bin:$PATH
-export DATA_CACHE="/data/paras/representjs_data
+export PATH="/data/paras/miniconda3/bin:$PATH"
+export DATA_CACHE="/data/paras/representjs_data"
 
 echo "CUDA_VISIBLE_DEVICES = $CUDA_VISIBLE_DEVICES"
 echo "CUDA_DEVICE_ORDER = $CUDA_DEVICE_ORDER"
