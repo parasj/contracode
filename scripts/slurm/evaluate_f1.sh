@@ -13,7 +13,7 @@ free -mh
 
 [ -z "$CHECKPOINT" ] && { echo "Need to set CHECKPOINT"; exit 1; }
 export BATCHSIZE=${BATCHSIZE:-64}
-export NUMDECODERLAYERS=${NUMDECODERLAYERS:-}
+export NUMDECODERLAYERS=${NUMDECODERLAYERS:-4}
 
 export PATH="/data/paras/miniconda3/bin:$PATH"
 export DATA_CACHE="/data/paras/representjs_data"
