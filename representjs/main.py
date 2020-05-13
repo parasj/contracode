@@ -18,7 +18,7 @@ from metrics.f1 import F1MetricMethodName
 from models.transformer import TransformerModel
 from representjs import RUN_DIR
 from utils import count_parameters
-from utils.decode import ids_to_strs, beam_search_decode
+from decode import ids_to_strs, beam_search_decode
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
