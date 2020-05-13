@@ -11,7 +11,6 @@ free -mh
 
 [ -z "$RUNNAME" ] && { echo "Need to set RUNNAME"; exit 1; }
 [ -z "$BATCHSIZE" ] && { echo "Need to set BATCHSIZE"; exit 1; }
-
 export PATH="/data/paras/miniconda3/bin:$PATH"
 export DATA_CACHE="/data/paras/representjs_data"
 
