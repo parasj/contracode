@@ -44,13 +44,15 @@ def beam_search_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=
 
     with torch.no_grad():
         # initial Y_hat and batchwise score tensors
-        sequences = [(torch.zeros(B, max_decode_len).long() + bos_id,
-                      torch.zeros(B))]
+        sequences = [(torch.zeros(B, max_decode_len).long().to(X.device) + bos_id,
+                      torch.zeros(B).to(X.device))]
         # walk over each item in output sequence
         for t in range(max_decode_len - 1):
             all_candidates = []
             # expand each current candidate
             for Y_hat, scores in sequences:
+                Y_hat = Y_hat.to(X.device)
+                scores = scores.to(X.device)
                 logits = model(X, Y_hat[:, :-1].to(X.device))
                 logits_t = logits[:, t, :]
                 logprobs_t = F.log_softmax(logits_t, dim=-1).to(scores.device)  # [B, V] tensor
