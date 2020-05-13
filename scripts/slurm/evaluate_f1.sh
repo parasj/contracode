@@ -39,7 +39,7 @@ pip install torch
 pip install -e .
 npm install
 
-python representjs/main.py test -batch_size 128 --num_workers 8 \
+python representjs/main.py test -batch_size 64 --num_workers 8 \
   --checkpoint_file $CHECKPOINT \
   --test_filepath $DATA_CACHE/codesearchnet_javascript/javascript_test_0.jsonl.gz \
   --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model

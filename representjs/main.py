@@ -102,7 +102,7 @@ def test(
         num_workers=1,
         limit_dataset_size=-1,
 
-        batch_size=128,
+        batch_size=16,
 
         n_decoder_layers=4,
         use_cuda: bool = True,
@@ -124,6 +124,9 @@ def test(
     model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
 
+    if use_cuda:
+        model = model.cuda()
+
     # Load checkpoint
     checkpoint = torch.load(checkpoint_file)
     pretrained_state_dict = checkpoint['model_state_dict']
@@ -140,7 +143,8 @@ def test(
     # Make metric
     metric = F1MetricMethodName()
 
-    precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda)
+    with torch.no_grad():
+        precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda)
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
     logger.info(f"F1: {f1:.5f}%")
