@@ -72,7 +72,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
 
 
 def calculate_f1_metric(metric: F1MetricMethodName, model, test_loader, sp: spm.SentencePieceProcessor, use_cuda=True,
-                        beam_search_k=5, max_decode_len=21):
+                        beam_search_k=5, max_decode_len=21, logger_fn=None):
     with Timer() as t:
         n_examples = 0
         precision, recall, f1 = 0., 0., 0.
@@ -89,6 +89,9 @@ def calculate_f1_metric(metric: F1MetricMethodName, model, test_loader, sp: spm.
                 recall += score_item
                 f1 += f1_item
                 n_examples += 1
+                if logger_fn is not None:
+                    logger_fn({'precision_item': precision_item, 'recall_item': score_item, 'f1_item': f1_item})
+                    logger_fn({'precision_avg': precision / n_examples, 'recall_avg': recall / n_examples, 'f1_avg': f1 / n_examples})
     logger.debug(f"Test set evaluation (F1) took {t.interval:.3}s over {n_examples} samples")
     return precision / n_examples, recall / n_examples, f1 / n_examples
 
@@ -107,11 +110,11 @@ def test(
         n_decoder_layers=4,
         use_cuda: bool = True,
 ):
+    wandb.init(name=checkpoint_file, config=locals(), project="f1_eval", entity="ml4code")
     if use_cuda:
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
-    pad_id = sp.PieceToId("[PAD]")
 
     # Create test dataset and dataloader
     logger.info(f"Test data path {test_filepath}")
@@ -142,7 +145,7 @@ def test(
     metric = F1MetricMethodName()
 
     with torch.no_grad():
-        precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda)
+        precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
     logger.info(f"F1: {f1:.5f}%")
