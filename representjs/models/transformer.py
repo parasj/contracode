@@ -59,3 +59,38 @@ class TransformerModel(nn.Module):
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
         return mask
+
+
+class TaggingModel(nn.Module):
+    def __init__(self, n_tokens, d_model=512, d_rep=128, n_head=8, n_encoder_layers=6, d_ff=2048, dropout=0.1,
+                 activation="relu", norm=True, pad_id=None, n_tags=100):
+        super(TaggingModel, self).__init__()
+        assert norm
+        assert pad_id is not None
+        self.config = {k: v for k, v in locals().items() if k != 'self'}
+
+        # Encoder
+        self.encoder = CodeEncoder(n_tokens, d_model, d_rep, n_head, n_encoder_layers,
+            d_ff, dropout, activation, norm, pad_id, project=False)
+
+        self.output = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, n_tags),
+        )
+
+    def forward(self, src_tok_ids):
+        r"""
+        Arguments:
+            src_tok_ids: [B, L] long tensor
+        """
+        memory = self.encoder(src_tok_ids)  # [L, B, d_model]
+
+        # Get representation by averaging across non-pad tokens
+        # TODO: Compare to simple mean
+        memory = memory.mean(dim=0)
+        # non_pad_mask = (src_tok_ids != self.config["pad_id"]).transpose(0, 1).unsqueeze(-1)
+        # memory = (memory * non_pad_mask).sum(dim=0)  # [B, d_model]
+        # memory = memory / non_pad_mask.sum(dim=0)
+
+        return self.output(memory)  # [B, n_tags]

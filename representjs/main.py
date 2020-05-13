@@ -10,12 +10,13 @@ import torch.nn.functional as F
 import tqdm
 import wandb
 from loguru import logger
+from sklearn.metrics import roc_auc_score, average_precision_score
 
 from data.jsonl_dataset import get_csnjs_dataset
 from data.old_dataloader import javascript_dataloader
 from data.util import Timer
 from metrics.f1 import F1MetricMethodName
-from models.transformer import TransformerModel
+from models.transformer import TransformerModel, TaggingModel
 from representjs import RUN_DIR
 from utils import count_parameters
 from decode import ids_to_strs, beam_search_decode
@@ -69,6 +70,54 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
                 pbar.set_description(f"evaluate average loss {avg_loss:.4f}")
         logger.debug(f"Loss calculation took {t.interval:.3f}s")
         return avg_loss
+
+
+def _evaluate_tagging(model, loader, use_cuda=True):
+    model.eval()
+
+    y_preds = []
+    y_targets = []
+
+    with torch.no_grad():
+        with Timer() as t:
+            # Compute average loss
+            total_loss = 0
+            num_examples = 0
+            pbar = tqdm.tqdm(loader, desc=f"evaluate")
+            for X, Y in pbar:
+                if use_cuda:
+                    X, Y = X.cuda(), Y.cuda()
+                logits = model(X)
+                loss  = F.binary_cross_entropy_with_logits(logits, Y.float())
+
+                probs = F.sigmoid(logits)
+                y_preds.append(probs.cpu().numpy())
+                y_targets.append(Y.cpu().numpy())
+
+                total_loss += loss.item() * X.size(0)
+                num_examples += X.size(0)
+                avg_loss = total_loss / num_examples
+                pbar.set_description(f"evaluate average tagging loss {avg_loss:.4f}")
+        logger.debug(f"Loss calculation took {t.interval:.3f}s")
+
+        y_preds = np.concatenate(y_preds, axis=0)
+        y_targets = np.concatenate(y_targets, axis=0)
+        nonzero_support = y_targets.sum(axis=0) != 0
+        y_preds = y_preds[:, nonzero_support]
+        y_targets = y_targets[:, nonzero_support]
+        roc_auc_macro = roc_auc_score(y_targets, y_preds, average="macro")
+        roc_auc_weighted = roc_auc_score(y_targets, y_preds, average="weighted")
+        ap_macro = average_precision_score(y_targets, y_preds, average="macro")
+        ap_weighted = average_precision_score(y_targets, y_preds, average="weighted")
+
+        return {
+            "eval_loss": avg_loss,
+            "eval_roc_auc_macro": roc_auc_macro,
+            "eval_roc_auc_weighted": roc_auc_weighted,
+            "eval_ap_macro": ap_macro,
+            "eval_ap_weighted": ap_weighted,
+            "eval_num_tags": nonzero_support.sum()
+        }
 
 
 def calculate_f1_metric(metric: F1MetricMethodName, model, test_loader, sp: spm.SentencePieceProcessor, use_cuda=True,
@@ -160,6 +209,8 @@ def train(
         program_mode="identity",
         eval_program_mode="identity",
         label_mode="identifier",
+        label_tag_index_path=None,
+        label_tag_index_size=100,
         num_workers=1,
         limit_dataset_size=-1,
 
@@ -210,7 +261,8 @@ def train(
 
     # Create training dataset and dataloader
     logger.info(f"Training data path {train_filepath}")
-    train_dataset = get_csnjs_dataset(train_filepath, label_mode=label_mode, limit_size=limit_dataset_size)
+    train_dataset = get_csnjs_dataset(
+        train_filepath, label_mode, label_tag_index_path, label_tag_index_size, limit_size=limit_dataset_size)
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = javascript_dataloader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
@@ -219,16 +271,24 @@ def train(
 
     # Create eval dataset and dataloader
     logger.info(f"Eval data path {eval_filepath}")
-    eval_dataset = get_csnjs_dataset(eval_filepath, label_mode=label_mode, limit_size=limit_dataset_size)
+    eval_dataset = get_csnjs_dataset(
+        eval_filepath, label_mode, label_tag_index_path, label_tag_index_size, limit_size=limit_dataset_size)
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = javascript_dataloader(
         eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,
         augmentations=[], sp=sp, program_mode=eval_program_mode,
         subword_regularization_alpha=subword_regularization_alpha)
 
-    # Create model
-    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
-    logger.info(f"Created TransformerModel with {count_parameters(model)} params")
+    if label_tag_index_path:
+        # Create tagging model
+        logger.info("Creating model for tagging task")
+        model = TaggingModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_tags=label_tag_index_size)
+        logger.info(f"Created TaggingModel with {count_parameters(model)} params")
+    else:
+        # Create seq2seq model
+        logger.info("Creating model for sequence to sequence task")
+        model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
+        logger.info(f"Created TransformerModel with {count_parameters(model)} params")
 
     # Load checkpoint
     if resume_path:
@@ -239,6 +299,7 @@ def train(
             # TODO: Try loading encoder_k -- has ema on parameters
             if key.startswith('encoder_k.') and 'project_layer' not in key:
                 remapped_key = key[len('encoder_k.'):]
+                # TODO: Load project layer for tagging task
                 logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
                 encoder_state_dict[remapped_key] = value
         model.encoder.load_state_dict(encoder_state_dict)
@@ -270,12 +331,21 @@ def train(
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
         for X, Y in pbar:
             if use_cuda:
-                X = X.cuda()
-                Y = Y.cuda()
+                X = X.cuda()  # [B, T]
+                Y = Y.cuda()  # [B, n_tags]
             optimizer.zero_grad()
-            # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
-            logits = model(X, Y[:, :-1])
-            loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
+            if label_tag_index_path:
+                # tagging
+                logits = model(X)  # [B, n_tags] unnormalized
+                # logger.debug(f"Y type: {Y.dtype}, Y device: {Y.device}")
+                loss  = F.binary_cross_entropy_with_logits(logits, Y.float())
+                loss_name = f"label-{label_mode}-tagging/train_loss"
+            else:
+                # seq2seq
+                # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
+                logits = model(X, Y[:, :-1])
+                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
+                loss_name = f"label-{label_mode}/train_loss"
             loss.backward()
             optimizer.step()
             # scheduler.step()
@@ -284,17 +354,26 @@ def train(
             global_step += 1
             wandb.log({
                 "epoch": epoch,
-                f"label-{label_mode}/train_loss": loss.item(),
+                loss_name: loss.item(),
                 # "lr": scheduler.get_lr()
             }, step=global_step)
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-        max_decode_len = 20 if label_mode == "identifier" else 200
-        eval_loss = _evaluate(model, eval_loader, sp, use_cuda=use_cuda, max_decode_len=max_decode_len)
-        logger.info(f"Evaluation loss after epoch {epoch} ({global_step} steps): {eval_loss:.4f}")
-        wandb.log({"epoch": epoch, f"label-{label_mode}/eval_loss": eval_loss}, step=global_step)
+        if label_tag_index_path:
+            eval_metrics = _evaluate_tagging(model, eval_loader, use_cuda=use_cuda)
+            eval_loss = -eval_metrics["eval_loss"]
+            for key, value in eval_metrics.items():
+                logger.info(f"Evaluation {key} after epoch {epoch} ({global_step} steps): {value:.4f}")
+            eval_metrics = {f"label-{label_mode}-tagging/{key}": value for key, value in eval_metrics.items()}
+            eval_metrics["epoch"] = epoch
+            wandb.log(eval_metrics, step=global_step)
+        else:
+            max_decode_len = 20 if label_mode == "identifier" else 200
+            eval_loss = _evaluate(model, eval_loader, sp, use_cuda=use_cuda, max_decode_len=max_decode_len)
+            logger.info(f"Evaluation loss after epoch {epoch} ({global_step} steps): {eval_loss:.4f}")
+            wandb.log({"epoch": epoch, f"label-{label_mode}/eval_loss": eval_loss}, step=global_step)
 
         # Save checkpoint
         if save_every and epoch % save_every == 0 or eval_loss < min_eval_loss:

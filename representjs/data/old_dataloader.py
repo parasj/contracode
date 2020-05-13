@@ -69,7 +69,8 @@ def _augment_server(transform_payload: List[dict]) -> List[str]:
 
 
 def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProcessor, program_mode: str,
-                           subword_regularization_alpha: float, max_length: int, max_target_length: int=256):
+                           subword_regularization_alpha: float, max_length: int, max_target_length: int=256,
+                           encode_label_as_ids=True):
     assert program_mode in ["contrastive", "augmentation", "identity"]
     bos_id = sp.PieceToId("<s>")
     eos_id = sp.PieceToId("</s>")
@@ -113,11 +114,16 @@ def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProce
         X = [torch.tensor([bos_id] + ids[:(max_length - 2)] + [eos_id]) for ids in X]
         X = pad_sequence(X, batch_first=True, padding_value=pad_id)
 
-        # Create padded tensor for labels (good for seq2seq tasks)
         if "label" in examples[0]:
-            label = [sp.EncodeAsIds(ex["label"]) for ex in examples]
-            label = [torch.tensor([bos_id] + ids[:(max_target_length - 2)] + [eos_id]) for ids in label]
-            label = pad_sequence(label, batch_first=True, padding_value=pad_id)
+            if isinstance(examples[0]["label"], torch.Tensor):
+                # One-hot or or integer long tensor label
+                label = [ex["label"] for ex in examples]
+                label = torch.stack(label).long()  # B x C for C-dimensional one-hot tensor labels
+            else:
+                # Create padded tensor for labels (good for seq2seq tasks)
+                label = [sp.EncodeAsIds(ex["label"]) for ex in examples]
+                label = [torch.tensor([bos_id] + ids[:(max_target_length - 2)] + [eos_id]) for ids in label]
+                label = pad_sequence(label, batch_first=True, padding_value=pad_id)
         else:
             label = None
 

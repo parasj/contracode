@@ -1,6 +1,8 @@
 import re
 from collections import Counter
 
+from data.jsonl_dataset import split_method_name
+
 
 def gen_counter_items(counts: Counter):
     for key in counts.keys():
@@ -15,27 +17,16 @@ class F1MetricMethodName:
         self.tokenize_camel_case = tokenize_camel_case
         self.tokenize_snake_case = tokenize_snake_case
         self.eps = eps
-        self.camel_case_re = re.compile(r'.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
-
-    def camel_case_split(self, identifier):
-        """from https://stackoverflow.com/questions/29916065/how-to-do-camelcase-split-in-python"""
-        return [m.group(0) for m in self.camel_case_re.finditer(identifier)]
-
-    def snake_case_split(self, identifier):
-        return identifier.split('_')
 
     def split_method_name(self, method_name: str):
-        toks = [method_name]
-        if self.tokenize_snake_case:
-            toks = [tok for s in toks for tok in self.snake_case_split(s)]
-        if self.tokenize_camel_case:
-            toks = [tok for s in toks for tok in self.camel_case_split(s)]
-        return toks
+        return split_method_name(
+            method_name, self.tokenize_snake_case, self.tokenize_camel_case, self.case_insensitive)
 
     def count_tokens(self, token_list):
         count = Counter()
         for token in token_list:
             if self.case_insensitive:
+                # NOTE: redundant, also in split_method_name
                 token = token.lower()
             if not (self.ignore_empty and len(token) == 0):
                 count[token] += 1

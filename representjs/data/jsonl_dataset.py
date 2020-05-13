@@ -1,5 +1,7 @@
 import gzip
+from operator import itemgetter
 import pathlib
+import pickle
 import re
 from typing import Optional, Iterable
 
@@ -27,6 +29,28 @@ _url_regex = re.compile(r"https?://\S+\b")
 def normalize_docstring(docstring: str):
     # Substitute urls with [URL]
     return _url_regex.sub("[URL]", docstring)
+
+
+_camel_case_re = re.compile(r'.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
+def camel_case_split(identifier):
+    """from https://stackoverflow.com/questions/29916065/how-to-do-camelcase-split-in-python"""
+    return [m.group(0) for m in _camel_case_re.finditer(identifier)]
+
+def snake_case_split(identifier):
+    return identifier.split('_')
+
+def split_method_name(method_name: str,
+                      tokenize_snake_case=True,
+                      tokenize_camel_case=True,
+                      case_insensitive=False):
+    toks = [method_name]
+    if tokenize_snake_case:
+        toks = [tok for s in toks for tok in snake_case_split(s)]
+    if tokenize_camel_case:
+        toks = [tok for s in toks for tok in camel_case_split(s)]
+    if case_insensitive:
+        toks = [tok.lower() for tok in toks]
+    return toks
 
 
 def _fix_json_dict(json_dict, require_fields, src_function_key, src_method_name_key):
@@ -84,6 +108,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
                  debug_charset=False,
                  src_function_key='function',
                  src_method_name_key='identifier',
+                 label_tags=None,
                  **kwargs):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
         Arguments:
@@ -111,6 +136,14 @@ class JSONLinesDataset(torch.utils.data.Dataset):
                 self.examples.append(example)
                 if 'label' in example.keys():
                     label_char_set.update(example['label'])
+                    if label_tags:
+                        # Split the label into tags and create a one-hot label
+                        tokens = split_method_name(example['label'])
+                        label = torch.zeros(len(label_tags), dtype=torch.long)
+                        for i, tag in enumerate(label_tags):
+                            if tag in tokens:
+                                label[i] = 1
+                        example['label'] = label
                 if limit_size >= 0 and len(self.examples) >= limit_size:
                     print()
                     logger.info(f"WARNING: Limiting dataset size to {limit_size}")
@@ -132,7 +165,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
         return self.examples[idx]
 
 
-def get_csnjs_dataset(filepath, label_mode, limit_size):
+def get_csnjs_dataset(filepath, label_mode, label_tag_index_path=None, label_tag_index_size=100, limit_size=-1):
     """
     Returns dataset for CodeSearchNet JavaScript language,
     which contains datapoints as dicts with keys "function" and "label"
@@ -154,10 +187,23 @@ def get_csnjs_dataset(filepath, label_mode, limit_size):
         dataset_fields = {"function": "function"}
         dataset_require_fields = []
 
+    if label_tag_index_path:
+        # Load list of tags created by make_method_name_tag_index.py
+        logger.info(f"Loading label tag index from {label_tag_index_path}")
+        with open(label_tag_index_path, "rb") as tag_index_f:
+            tag_index = pickle.load(tag_index_f)
+            label_tags = tag_index["token_counter"].most_common(label_tag_index_size)
+            label_tags = list(map(itemgetter(0), label_tags))
+            label_tags.sort()
+            logger.debug(f"Using top {label_tag_index_size} tags as labels: {label_tags}")
+    else:
+        label_tags = None
+
     dataset = JSONLinesDataset(filepath,
                                fields=dataset_fields,
                                require_fields=dataset_require_fields,
                                limit_size=limit_size,
                                src_function_key=src_function_key,
-                               src_method_name_key=src_method_name_key)
+                               src_method_name_key=src_method_name_key,
+                               label_tags=label_tags)
     return dataset
