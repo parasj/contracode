@@ -35,6 +35,8 @@ class F1MetricMethodName:
     def count_tokens(self, token_list):
         count = Counter()
         for token in token_list:
+            if self.case_insensitive:
+                token = token.lower()
             if not (self.ignore_empty and len(token) == 0):
                 count[token] += 1
         return count
