@@ -39,11 +39,7 @@ pip install torch
 pip install -e .
 npm install
 
-python representjs/main.py train --run_name 20020_identity_identifier_codeenc_noreset_finetune_10070s95k \
-  --program_mode identity --label_mode identifier --n_decoder_layers=4 --subword_regularization_alpha 0 \
-  --num_epochs 150 --save_every 5 --batch_size 16 --num_workers 8 --lr 1e-4 \
-  --train_filepath $DATA_CACHE/codesearchnet_javascript/javascript_train_supervised.jsonl.gz \
-  --eval_filepath $DATA_CACHE/codesearchnet_javascript/javascript_valid_0.jsonl.gz \
-  --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
-  --resume_path /work/paras/representjs/data/good_runs/10070/ckpt_pretrain_ep0002_step0095000.pth \
-  --limit_dataset_size 10000
+python representjs/main.py test -batch_size 128 --num_workers 8 \
+  --checkpoint_file $CHECKPOINT \
+  --test_filepath $DATA_CACHE/codesearchnet_javascript/javascript_test_0.jsonl.gz \
+  --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model
