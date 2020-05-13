@@ -130,7 +130,12 @@ def test(
     # Load checkpoint
     checkpoint = torch.load(checkpoint_file)
     pretrained_state_dict = checkpoint['model_state_dict']
-    model.load_state_dict(pretrained_state_dict)
+    try:
+        model.load_state_dict(pretrained_state_dict)
+    except RuntimeError as e:
+        logger.error(e)
+        logger.error("Keys in checkpoint: " + str(list(pretrained_state_dict.keys())))
+        raise e
     logger.info(f"Loaded state dict from {checkpoint_file}")
 
     # Make metric
