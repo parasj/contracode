@@ -2,7 +2,6 @@ import os
 import random
 
 import fire
-from loguru import logger
 import numpy as np
 import sentencepiece as spm
 import torch
@@ -10,15 +9,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 import tqdm
 import wandb
+from loguru import logger
 
+from data.jsonl_dataset import get_csnjs_dataset
 from data.old_dataloader import javascript_dataloader
 from data.util import Timer
 from metrics.f1 import F1MetricMethodName
-from representjs import RUN_DIR
-from data.jsonl_dataset import get_csnjs_dataset
-from utils import count_parameters
 from models.transformer import TransformerModel
-from decode import ids_to_strs, beam_search_decode
+from representjs import RUN_DIR
+from utils import count_parameters
+from utils.decode import ids_to_strs, beam_search_decode
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
@@ -93,13 +93,65 @@ def calculate_f1_metric(metric: F1MetricMethodName, model, test_loader, sp: spm.
     return precision / n_examples, recall / n_examples, f1 / n_examples
 
 
+def test(
+        checkpoint_file: str,
+        test_filepath: str = CSNJS_TEST_FILEPATH,
+        spm_filepath: str = SPM_UNIGRAM_FILEPATH,
+        program_mode="identity",
+        label_mode="identifier",
+        num_workers=1,
+        limit_dataset_size=-1,
+
+        batch_size=128,
+
+        n_decoder_layers=4,
+        use_cuda: bool = True,
+):
+    if use_cuda:
+        assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
+    sp = spm.SentencePieceProcessor()
+    sp.Load(spm_filepath)
+    pad_id = sp.PieceToId("[PAD]")
+
+    # Create test dataset and dataloader
+    logger.info(f"Test data path {test_filepath}")
+    test_dataset = get_csnjs_dataset(test_filepath, label_mode=label_mode, limit_size=limit_dataset_size)
+    logger.info(f"Test dataset size: {len(test_filepath)}")
+    test_loader = javascript_dataloader(
+        test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sp=sp, program_mode=program_mode,
+        subword_regularization_alpha=0, augmentations=[])
+
+    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
+    logger.info(f"Created TransformerModel with {count_parameters(model)} params")
+
+    # Load checkpoint
+    checkpoint = torch.load(checkpoint_file)
+    pretrained_state_dict = checkpoint['model_state_dict']
+    encoder_state_dict = {}
+    for key, value in pretrained_state_dict.items():
+        # TODO: Try loading encoder_k -- has ema on parameters
+        if key.startswith('encoder_k.') and 'project_layer' not in key:
+            remapped_key = key[len('encoder_k.'):]
+            logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
+            encoder_state_dict[remapped_key] = value
+    model.encoder.load_state_dict(encoder_state_dict)
+    logger.info(f"Loaded state dict from {checkpoint_file}")
+
+    # Make metric
+    metric = F1MetricMethodName()
+
+    precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda)
+    logger.info(f"Precision: {precision:.5f}%")
+    logger.info(f"Recall: {recall:.5f}%")
+    logger.info(f"F1: {f1:.5f}%")
+
+
 def train(
         run_name: str,
 
         # Data
         train_filepath: str = CSNJS_TRAIN_FILEPATH,
         eval_filepath: str = CSNJS_VALID_FILEPATH,
-        test_filepath: str = CSNJS_TEST_FILEPATH,
         spm_filepath: str = SPM_UNIGRAM_FILEPATH,
         program_mode="identity",
         eval_program_mode="identity",
@@ -109,23 +161,23 @@ def train(
 
         # Model
         n_decoder_layers=4,
-        resume_path: str="",
+        resume_path: str = "",
 
         # Optimization
-        train_decoder_only: bool=False,
+        train_decoder_only: bool = False,
         num_epochs: int = 100,
         save_every: int = 2,
         batch_size: int = 256,
         lr: float = 8e-4,
-        adam_beta1: float=0.9,
-        adam_beta2: float=0.98,
+        adam_beta1: float = 0.9,
+        adam_beta2: float = 0.98,
 
         # Loss
         subword_regularization_alpha: float = 0,
 
         # Computational
         use_cuda: bool = True,
-        seed: int=0
+        seed: int = 0
 ):
     """Train model"""
     torch.manual_seed(seed)
@@ -170,20 +222,9 @@ def train(
         augmentations=[], sp=sp, program_mode=eval_program_mode,
         subword_regularization_alpha=subword_regularization_alpha)
 
-    # Create test dataset and dataloader
-    logger.info(f"Test data path {test_filepath}")
-    test_dataset = get_csnjs_dataset(test_filepath, label_mode=label_mode, limit_size=limit_dataset_size)
-    logger.info(f"Test dataset size: {len(eval_dataset)}")
-    test_loader = javascript_dataloader(
-        test_dataset, batch_size=batch_size * 8, shuffle=False, num_workers=num_workers, sp=sp, program_mode="identity",
-        subword_regularization_alpha=0, augmentations=[])
-
     # Create model
     model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
-
-    # Make metric
-    metric = F1MetricMethodName()
 
     # Load checkpoint
     if resume_path:
@@ -251,10 +292,6 @@ def train(
         logger.info(f"Evaluation loss after epoch {epoch} ({global_step} steps): {eval_loss:.4f}")
         wandb.log({"epoch": epoch, f"label-{label_mode}/eval_loss": eval_loss}, step=global_step)
 
-        logger.info(f"Evaluating F1 score on test set")
-        precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda)
-        wandb.log({'epoch': epoch, 'test/precision': precision, 'test/recall': recall, 'test/f1': f1})
-
         # Save checkpoint
         if save_every and epoch % save_every == 0 or eval_loss < min_eval_loss:
             checkpoint = {
@@ -277,4 +314,7 @@ def train(
 
 
 if __name__ == "__main__":
-    fire.Fire({"train": train})
+    fire.Fire({
+        "train": train,
+        "test": test
+    })
