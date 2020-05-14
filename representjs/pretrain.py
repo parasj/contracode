@@ -17,7 +17,8 @@ from representjs import RUN_DIR, CSNJS_DIR
 from data import transforms
 from data.precomputed_dataset import PrecomputedDataset
 from data.jsonl_dataset import get_csnjs_dataset
-from models.code_moco import CodeMoCo, CodeMLM
+from models.code_mlm import CodeMLM
+from models.code_moco import CodeMoCo
 from utils import accuracy, count_parameters
 
 DEFAULT_CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
