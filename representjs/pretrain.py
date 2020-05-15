@@ -49,14 +49,13 @@ def training_step_mlm(model, batch, pad_id, mask_id, use_cuda=False):
     seq_masked[mask].fill_(mask_id)
     assert isinstance(model, CodeMLM)
     output = model(seq_masked)  # BxLxVocab
-    target = None # TODO: what is the target?
+    target = None  # TODO: what is the target?
     loss = F.cross_entropy(output, target)
     # TODO: Remove accuracy?
     acc1, acc5 = accuracy(output, target, topk=(1, 5))
     logs = {'pretrain/loss': loss.item(), 'pretrain/acc@1': acc1[0].item(),
             'pretrain/acc@5': acc5[0].item(), 'pretrain/queue_ptr': model.module.queue_ptr.item()}
     return {'loss': loss, 'log': logs}
-
 
 
 def pretrain(
@@ -92,6 +91,7 @@ def pretrain(
                                                                                os.environ.get('CUDA_DEVICE_ORDER')))
 
     assert not use_cuda or torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
+    assert loss_mode in ['infonce', 'mlm']
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -135,10 +135,10 @@ def pretrain(
                                                num_workers=num_workers, drop_last=True)
 
     # Create model
-    if self.loss == "infonce":
+    if loss_mode == "infonce":
         model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
         logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
-    elif self.loss == "mlm":
+    elif loss_mode == "mlm":
         model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id)
         logger.info(f"Created CodeMLM model with {count_parameters(model)} params")
     model = nn.DataParallel(model)
