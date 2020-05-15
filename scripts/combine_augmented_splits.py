@@ -2,7 +2,7 @@ import glob
 import pickle
 import jsonlines
 
-if __name__=="__main__":
+if __name__ == "__main__":
     files = glob.glob("data/codesearchnet_javascript/augmented/*.jsonl*.augmented")
     files.sort()
     all_data = []
