@@ -29,8 +29,9 @@ CSNJS_TEST_FILEPATH = os.path.join(DATA_DIR, "javascript_test_0.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model")
 
 
-def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
-              num_to_print=8, beam_search_k=5, max_decode_len=20):
+def _evaluate(
+    model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20
+):
     model.eval()
     pad_id = sp.PieceToId("[PAD]")
 
@@ -71,11 +72,19 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True,
         return avg_loss
 
 
-def calculate_f1_metric(metric: F1MetricMethodName, model, test_loader, sp: spm.SentencePieceProcessor, use_cuda=True,
-                        beam_search_k=5, max_decode_len=21, logger_fn=None):
+def calculate_f1_metric(
+    metric: F1MetricMethodName,
+    model,
+    test_loader,
+    sp: spm.SentencePieceProcessor,
+    use_cuda=True,
+    beam_search_k=5,
+    max_decode_len=21,
+    logger_fn=None,
+):
     with Timer() as t:
         n_examples = 0
-        precision, recall, f1 = 0., 0., 0.
+        precision, recall, f1 = 0.0, 0.0, 0.0
         pbar = tqdm.tqdm(test_loader, desc=f"test")
         for X, Y in pbar:
             if use_cuda:
@@ -90,25 +99,29 @@ def calculate_f1_metric(metric: F1MetricMethodName, model, test_loader, sp: spm.
                 f1 += f1_item
                 n_examples += 1
                 if logger_fn is not None:
-                    logger_fn({'precision_item': precision_item, 'recall_item': score_item, 'f1_item': f1_item})
-                    logger_fn({'precision_avg': precision / n_examples, 'recall_avg': recall / n_examples, 'f1_avg': f1 / n_examples})
+                    logger_fn({"precision_item": precision_item, "recall_item": score_item, "f1_item": f1_item})
+                    logger_fn(
+                        {
+                            "precision_avg": precision / n_examples,
+                            "recall_avg": recall / n_examples,
+                            "f1_avg": f1 / n_examples,
+                        }
+                    )
     logger.debug(f"Test set evaluation (F1) took {t.interval:.3}s over {n_examples} samples")
     return precision / n_examples, recall / n_examples, f1 / n_examples
 
 
 def test(
-        checkpoint_file: str,
-        test_filepath: str = CSNJS_TEST_FILEPATH,
-        spm_filepath: str = SPM_UNIGRAM_FILEPATH,
-        program_mode="identity",
-        label_mode="identifier",
-        num_workers=1,
-        limit_dataset_size=-1,
-
-        batch_size=16,
-
-        n_decoder_layers=4,
-        use_cuda: bool = True,
+    checkpoint_file: str,
+    test_filepath: str = CSNJS_TEST_FILEPATH,
+    spm_filepath: str = SPM_UNIGRAM_FILEPATH,
+    program_mode="identity",
+    label_mode="identifier",
+    num_workers=1,
+    limit_dataset_size=-1,
+    batch_size=16,
+    n_decoder_layers=4,
+    use_cuda: bool = True,
 ):
     wandb.init(name=checkpoint_file, config=locals(), project="f1_eval", entity="ml4code")
     if use_cuda:
@@ -121,10 +134,19 @@ def test(
     test_dataset = get_csnjs_dataset(test_filepath, label_mode=label_mode, limit_size=limit_dataset_size)
     logger.info(f"Test dataset size: {len(test_filepath)}")
     test_loader = javascript_dataloader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sp=sp, program_mode=program_mode,
-        subword_regularization_alpha=0, augmentations=[])
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        sp=sp,
+        program_mode=program_mode,
+        subword_regularization_alpha=0,
+        augmentations=[],
+    )
 
-    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
+    model = TransformerModel(
+        n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers
+    )
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
 
     if use_cuda:
@@ -132,7 +154,7 @@ def test(
 
     # Load checkpoint
     checkpoint = torch.load(checkpoint_file)
-    pretrained_state_dict = checkpoint['model_state_dict']
+    pretrained_state_dict = checkpoint["model_state_dict"]
     try:
         model.load_state_dict(pretrained_state_dict)
     except RuntimeError as e:
@@ -145,44 +167,41 @@ def test(
     metric = F1MetricMethodName()
 
     with torch.no_grad():
-        precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
+        precision, recall, f1 = calculate_f1_metric(
+            metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log
+        )
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
     logger.info(f"F1: {f1:.5f}%")
 
 
 def train(
-        run_name: str,
-
-        # Data
-        train_filepath: str = CSNJS_TRAIN_FILEPATH,
-        eval_filepath: str = CSNJS_VALID_FILEPATH,
-        spm_filepath: str = SPM_UNIGRAM_FILEPATH,
-        program_mode="identity",
-        eval_program_mode="identity",
-        label_mode="identifier",
-        num_workers=1,
-        limit_dataset_size=-1,
-
-        # Model
-        n_decoder_layers=4,
-        resume_path: str = "",
-
-        # Optimization
-        train_decoder_only: bool = False,
-        num_epochs: int = 100,
-        save_every: int = 2,
-        batch_size: int = 256,
-        lr: float = 8e-4,
-        adam_beta1: float = 0.9,
-        adam_beta2: float = 0.98,
-
-        # Loss
-        subword_regularization_alpha: float = 0,
-
-        # Computational
-        use_cuda: bool = True,
-        seed: int = 0
+    run_name: str,
+    # Data
+    train_filepath: str = CSNJS_TRAIN_FILEPATH,
+    eval_filepath: str = CSNJS_VALID_FILEPATH,
+    spm_filepath: str = SPM_UNIGRAM_FILEPATH,
+    program_mode="identity",
+    eval_program_mode="identity",
+    label_mode="identifier",
+    num_workers=1,
+    limit_dataset_size=-1,
+    # Model
+    n_decoder_layers=4,
+    resume_path: str = "",
+    # Optimization
+    train_decoder_only: bool = False,
+    num_epochs: int = 100,
+    save_every: int = 2,
+    batch_size: int = 256,
+    lr: float = 8e-4,
+    adam_beta1: float = 0.9,
+    adam_beta2: float = 0.98,
+    # Loss
+    subword_regularization_alpha: float = 0,
+    # Computational
+    use_cuda: bool = True,
+    seed: int = 0,
 ):
     """Train model"""
     torch.manual_seed(seed)
@@ -203,7 +222,7 @@ def train(
     train_augmentations = [
         {"fn": "sample_lines", "line_length_pct": 0.5},
         {"fn": "insert_var_declaration", "prob": 0.5},
-        {"fn": "rename_variable", "prob": 0.5}
+        {"fn": "rename_variable", "prob": 0.5},
     ]
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
@@ -214,32 +233,46 @@ def train(
     train_dataset = get_csnjs_dataset(train_filepath, label_mode=label_mode, limit_size=limit_dataset_size)
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = javascript_dataloader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
-        augmentations=train_augmentations, sp=sp, program_mode=program_mode,
-        subword_regularization_alpha=subword_regularization_alpha)
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        augmentations=train_augmentations,
+        sp=sp,
+        program_mode=program_mode,
+        subword_regularization_alpha=subword_regularization_alpha,
+    )
 
     # Create eval dataset and dataloader
     logger.info(f"Eval data path {eval_filepath}")
     eval_dataset = get_csnjs_dataset(eval_filepath, label_mode=label_mode, limit_size=limit_dataset_size)
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = javascript_dataloader(
-        eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,
-        augmentations=[], sp=sp, program_mode=eval_program_mode,
-        subword_regularization_alpha=subword_regularization_alpha)
+        eval_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        augmentations=[],
+        sp=sp,
+        program_mode=eval_program_mode,
+        subword_regularization_alpha=subword_regularization_alpha,
+    )
 
     # Create model
-    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
+    model = TransformerModel(
+        n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers
+    )
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
 
     # Load checkpoint
     if resume_path:
         checkpoint = torch.load(resume_path)
-        pretrained_state_dict = checkpoint['model_state_dict']
+        pretrained_state_dict = checkpoint["model_state_dict"]
         encoder_state_dict = {}
         for key, value in pretrained_state_dict.items():
             # TODO: Try loading encoder_k -- has ema on parameters
-            if key.startswith('encoder_k.') and 'project_layer' not in key:
-                remapped_key = key[len('encoder_k.'):]
+            if key.startswith("encoder_k.") and "project_layer" not in key:
+                remapped_key = key[len("encoder_k.") :]
                 logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
                 encoder_state_dict[remapped_key] = value
         model.encoder.load_state_dict(encoder_state_dict)
@@ -248,7 +281,7 @@ def train(
     # Set up optimizer
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
-    wandb.watch(model, log='all')
+    wandb.watch(model, log="all")
     params = model.module.decoder.parameters() if train_decoder_only else model.parameters()
     optimizer = torch.optim.Adam(params, lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
     # scheduler = torch.optim.lr_scheduler.OneCycleLR(
@@ -283,11 +316,14 @@ def train(
 
             # Log loss
             global_step += 1
-            wandb.log({
-                "epoch": epoch,
-                f"label-{label_mode}/train_loss": loss.item(),
-                # "lr": scheduler.get_lr()
-            }, step=global_step)
+            wandb.log(
+                {
+                    "epoch": epoch,
+                    f"label-{label_mode}/train_loss": loss.item(),
+                    # "lr": scheduler.get_lr()
+                },
+                step=global_step,
+            )
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
         # Evaluate
@@ -305,7 +341,7 @@ def train(
                 "epoch": epoch,
                 "global_step": global_step,
                 "config": config,
-                "eval_loss": eval_loss
+                "eval_loss": eval_loss,
             }
             if eval_loss < min_eval_loss:
                 logger.info(f"New best evaluation loss: prev {min_eval_loss:.4f} > new {eval_loss:.4f}")
@@ -319,7 +355,4 @@ def train(
 
 
 if __name__ == "__main__":
-    fire.Fire({
-        "train": train,
-        "test": test
-    })
+    fire.Fire({"train": train, "test": test})

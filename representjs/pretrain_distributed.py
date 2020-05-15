@@ -22,9 +22,7 @@ from data.jsonl_dataset import get_csnjs_dataset
 from models.code_moco import CodeMoCo
 from utils import accuracy, count_parameters
 
-DEFAULT_CSNJS_TRAIN_FILEPATH = str(
-    CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz"
-)
+DEFAULT_CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 DEFAULT_SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
 
 
@@ -92,7 +90,7 @@ def pretrain(
 
     run_dir = RUN_DIR / "{}_{}".format(run_name, int(time.time()))
     run_dir.mkdir(exist_ok=True, parents=True)
-    config['run_dir'] = str(run_dir.resolve())
+    config["run_dir"] = str(run_dir.resolve())
     logger.add(str((run_dir / "train.log").resolve()))
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
 
@@ -109,11 +107,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
     if config["rank"] % ngpus_per_node == 0:
         # NOTE: Should this be called by the 0th spawned process?
         wandb.init(
-            name=config["run_name"],
-            config=config,
-            job_type="training",
-            project="moco-pretrain",
-            entity="ml4code",
+            name=config["run_name"], config=config, job_type="training", project="moco-pretrain", entity="ml4code",
         )
 
     if gpu is not None:
@@ -166,9 +160,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         # DistributedDataParallel, we need to divide the batch size
         # ourselves based on the total number of GPUs we have
         config["batch_size"] = int(config["batch_size"] / ngpus_per_node)
-        config["num_workers"] = int(
-            (config["num_workers"] + ngpus_per_node - 1) / ngpus_per_node
-        )
+        config["num_workers"] = int((config["num_workers"] + ngpus_per_node - 1) / ngpus_per_node)
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
     else:
         model.cuda()
@@ -177,9 +169,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define optimizer
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-9
-    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-9)
 
     # Setup data
     train_dataset = PrecomputedDataset(
@@ -205,9 +195,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # Train
     global_step = 0
-    for epoch in tqdm.trange(
-        1, config["num_epochs"] + 1, desc="training", unit="epoch", leave=False
-    ):
+    for epoch in tqdm.trange(1, config["num_epochs"] + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         train_sampler.set_epoch(epoch)
         model.train()
@@ -220,16 +208,14 @@ def pretrain_worker(gpu, ngpus_per_node, config):
             optimizer.step()
 
             global_step += 1
-            pbar.set_description(
-                f"epoch {epoch} step {global_step} loss {loss.item():.4f}"
-            )
+            pbar.set_description(f"epoch {epoch} step {global_step} loss {loss.item():.4f}")
 
             if config["rank"] % ngpus_per_node == 0:
                 # Log loss
                 wandb.log(dict(epoch=epoch, **train_metrics["log"]), step=global_step)
 
                 # Save checkpoint
-                if config['save_every'] and global_step % config['save_every'] == 0:
+                if config["save_every"] and global_step % config["save_every"] == 0:
                     checkpoint = {
                         "model_state_dict": model.module.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
@@ -237,7 +223,9 @@ def pretrain_worker(gpu, ngpus_per_node, config):
                         "global_step": global_step,
                         "config": config,
                     }
-                    model_file = os.path.join(config['run_dir'], f"ckpt_pretrain_ep{epoch:04d}_step{global_step:07d}.pth")
+                    model_file = os.path.join(
+                        config["run_dir"], f"ckpt_pretrain_ep{epoch:04d}_step{global_step:07d}.pth"
+                    )
                     logger.info(f"Saving checkpoint to {model_file}...")
                     torch.save(checkpoint, model_file)
                     # wandb.save(model_file)
@@ -245,5 +233,5 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
 
 if __name__ == "__main__":
-    torch.multiprocessing.set_start_method('spawn')
+    torch.multiprocessing.set_start_method("spawn")
     fire.Fire(pretrain)

@@ -6,7 +6,8 @@ from models.encoder import CodeEncoder
 
 class MoCoTemplate(nn.Module):
     """From https://github.com/facebookresearch/moco/blob/master/moco/builder.py"""
-    def __init__(self, d_rep=128, K=61440, m=.999, T=0.07, encoder_params={}):  # 61440 = 2^12 * 3 * 5
+
+    def __init__(self, d_rep=128, K=61440, m=0.999, T=0.07, encoder_params={}):  # 61440 = 2^12 * 3 * 5
         """
         d_rep: feature dimension (default: 128)
         K: queue size; number of negative keys (default: 65536)
@@ -14,7 +15,7 @@ class MoCoTemplate(nn.Module):
         T: softmax temperature (default: 0.07)
         """
         super().__init__()
-        self.config = dict(**{'moco_num_keys': K, 'moco_momentum': m, 'moco_temperature': T}, **encoder_params)
+        self.config = dict(**{"moco_num_keys": K, "moco_momentum": m, "moco_temperature": T}, **encoder_params)
         self.K = K
         self.m = m
         self.T = T
@@ -39,7 +40,7 @@ class MoCoTemplate(nn.Module):
         Momentum update of the key encoder
         """
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
-            param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
+            param_k.data = param_k.data * self.m + param_q.data * (1.0 - self.m)
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys):
@@ -52,7 +53,7 @@ class MoCoTemplate(nn.Module):
         assert self.K % batch_size == 0  # for simplicity
 
         # replace the keys at ptr (dequeue and enqueue)
-        self.queue[:, ptr:ptr + batch_size] = keys.T
+        self.queue[:, ptr : ptr + batch_size] = keys.T
         ptr = (ptr + batch_size) % self.K  # move pointer
 
         self.queue_ptr[0] = ptr
@@ -86,9 +87,9 @@ class MoCoTemplate(nn.Module):
         # compute logits
         # Einstein sum is more intuitive
         # positive logits: Nx1
-        l_pos = torch.einsum('nc,nc->n', *[q, k]).unsqueeze(-1)
+        l_pos = torch.einsum("nc,nc->n", *[q, k]).unsqueeze(-1)
         # negative logits: NxK
-        l_neg = torch.einsum('nc,ck->nk', *[q, self.queue.clone().detach()])
+        l_neg = torch.einsum("nc,ck->nk", *[q, self.queue.clone().detach()])
 
         # logits: Nx(1+K)
         logits = torch.cat([l_pos, l_neg], dim=1)
@@ -111,8 +112,7 @@ def concat_all_gather(tensor):
     Performs all_gather operation on the provided tensors.
     *** Warning ***: torch.distributed.all_gather has no gradient.
     """
-    tensors_gather = [torch.ones_like(tensor)
-                      for _ in range(torch.distributed.get_world_size())]
+    tensors_gather = [torch.ones_like(tensor) for _ in range(torch.distributed.get_world_size())]
     torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
 
     output = torch.cat(tensors_gather, dim=0)
@@ -120,8 +120,10 @@ def concat_all_gather(tensor):
 
 
 class CodeMoCo(MoCoTemplate):
-    def __init__(self, n_tokens, d_model=512, d_rep=128, K=107520, m=.999, T=0.07, encoder_config={}, pad_id=None):
-        super().__init__(d_rep, K, m, T, dict(n_tokens=n_tokens, d_model=d_model, d_rep=d_rep, pad_id=pad_id, **encoder_config))
+    def __init__(self, n_tokens, d_model=512, d_rep=128, K=107520, m=0.999, T=0.07, encoder_config={}, pad_id=None):
+        super().__init__(
+            d_rep, K, m, T, dict(n_tokens=n_tokens, d_model=d_model, d_rep=d_rep, pad_id=pad_id, **encoder_config)
+        )
 
     def make_encoder(self, n_tokens, d_model, d_rep, pad_id=None, **kwargs):
         return CodeEncoder(n_tokens, project=True, pad_id=pad_id, d_model=d_model, d_rep=d_rep, **kwargs)

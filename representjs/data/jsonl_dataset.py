@@ -18,9 +18,11 @@ FUNCTION_ONLY_FIELDS = {"function": "function"}
 
 _num_invalid_id = 0
 _num_valid_id = 0
-_fix_function_crop_regexes = [re.compile(r + r'(\s+|\()') for r in
-                              [r'\A^unction', r'\A^nction', r'\A^ction', r'\A^tion', r'\A^ion', r'\A^on', r'\A^n']]
-_valid_identifier_regex = re.compile(r'^[a-zA-Z_$][0-9a-zA-Z_$]*$')
+_fix_function_crop_regexes = [
+    re.compile(r + r"(\s+|\()")
+    for r in [r"\A^unction", r"\A^nction", r"\A^ction", r"\A^tion", r"\A^ion", r"\A^on", r"\A^n"]
+]
+_valid_identifier_regex = re.compile(r"^[a-zA-Z_$][0-9a-zA-Z_$]*$")
 _url_regex = re.compile(r"https?://\S+\b")
 
 
@@ -37,7 +39,7 @@ def _fix_json_dict(json_dict, require_fields, src_function_key, src_method_name_
 
     # Fix cropped "function" token at the begging of the function string
     for regex in _fix_function_crop_regexes:
-        json_dict[src_function_key] = regex.sub(r'function\1', json_dict[src_function_key], count=1)
+        json_dict[src_function_key] = regex.sub(r"function\1", json_dict[src_function_key], count=1)
 
     if src_method_name_key in json_dict and json_dict[src_method_name_key]:
         if require_fields is not None and src_method_name_key in require_fields:
@@ -51,8 +53,8 @@ def _fix_json_dict(json_dict, require_fields, src_function_key, src_method_name_
                 return None
 
         # Remove function name from declaration, but leave it in the function body
-        _function_name_regex = r'(function\s*)' + re.escape(json_dict[src_method_name_key])
-        replaced_fn = re.sub(_function_name_regex, r'\1x', json_dict[src_function_key], count=1)
+        _function_name_regex = r"(function\s*)" + re.escape(json_dict[src_method_name_key])
+        replaced_fn = re.sub(_function_name_regex, r"\1x", json_dict[src_function_key], count=1)
         json_dict[src_function_key] = replaced_fn
     else:
         json_dict[src_function_key] = "const x = " + json_dict[src_function_key]
@@ -76,15 +78,17 @@ def _make_example(json_dict, fields, require_fields, src_function_key, src_metho
 class JSONLinesDataset(torch.utils.data.Dataset):
     """Defines a Dataset of columns stored in jsonlines format."""
 
-    def __init__(self,
-                 path,
-                 fields=FUNCTION_ONLY_FIELDS,
-                 require_fields: Optional[Iterable[str]] = None,
-                 limit_size=-1,
-                 debug_charset=False,
-                 src_function_key='function',
-                 src_method_name_key='identifier',
-                 **kwargs):
+    def __init__(
+        self,
+        path,
+        fields=FUNCTION_ONLY_FIELDS,
+        require_fields: Optional[Iterable[str]] = None,
+        limit_size=-1,
+        debug_charset=False,
+        src_function_key="function",
+        src_method_name_key="identifier",
+        **kwargs,
+    ):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
         Arguments:
             path (str): Path to the data file. Must be in .jsonl.gz or .jsonl format.
@@ -109,8 +113,8 @@ class JSONLinesDataset(torch.utils.data.Dataset):
             example = _make_example(line, fields, require_fields, src_function_key, src_method_name_key)
             if example:
                 self.examples.append(example)
-                if 'label' in example.keys():
-                    label_char_set.update(example['label'])
+                if "label" in example.keys():
+                    label_char_set.update(example["label"])
                 if limit_size >= 0 and len(self.examples) >= limit_size:
                     print()
                     logger.info(f"WARNING: Limiting dataset size to {limit_size}")
@@ -121,7 +125,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
         f.close()
 
         logger.debug(f"Loaded {len(self.examples)} examples")
-        if require_fields is not None and 'identifier' in require_fields:
+        if require_fields is not None and "identifier" in require_fields:
             logger.debug(f"Num examples with valid identifier field: {_num_valid_id}")
             logger.debug(f"Num examples with invalid identifier field:{_num_invalid_id}")
 
@@ -154,10 +158,12 @@ def get_csnjs_dataset(filepath, label_mode, limit_size):
         dataset_fields = {"function": "function"}
         dataset_require_fields = []
 
-    dataset = JSONLinesDataset(filepath,
-                               fields=dataset_fields,
-                               require_fields=dataset_require_fields,
-                               limit_size=limit_size,
-                               src_function_key=src_function_key,
-                               src_method_name_key=src_method_name_key)
+    dataset = JSONLinesDataset(
+        filepath,
+        fields=dataset_fields,
+        require_fields=dataset_require_fields,
+        limit_size=limit_size,
+        src_function_key=src_function_key,
+        src_method_name_key=src_method_name_key,
+    )
     return dataset

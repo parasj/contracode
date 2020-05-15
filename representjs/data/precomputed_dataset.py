@@ -12,14 +12,16 @@ from data.util import normalize_program
 class PrecomputedDataset(torch.utils.data.Dataset):
     """Defines a Dataset of unsupervised programs stored in pickle format."""
 
-    def __init__(self,
-                 path,
-                 sp,
-                 min_alternatives=1,
-                 limit_size=-1,
-                 max_length=1024,
-                 subword_regularization_alpha=0.1,
-                 program_mode="identity"):
+    def __init__(
+        self,
+        path,
+        sp,
+        min_alternatives=1,
+        limit_size=-1,
+        max_length=1024,
+        subword_regularization_alpha=0.1,
+        program_mode="identity",
+    ):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
         Arguments:
             path (str): Path to the data file. Must be in .pickle format.
@@ -27,8 +29,8 @@ class PrecomputedDataset(torch.utils.data.Dataset):
         super().__init__()
         full_path = pathlib.Path(path).resolve()
         logger.debug(f"Loading {full_path}")
-        if str(path).endswith('.gz'):
-            with gzip.open(str(full_path), 'rb') as f:
+        if str(path).endswith(".gz"):
+            with gzip.open(str(full_path), "rb") as f:
                 self.examples = pickle.load(f)
         else:
             with full_path.open("rb") as f:
@@ -82,5 +84,5 @@ class PrecomputedDataset(torch.utils.data.Dataset):
         else:
             # using the best decoding
             program = self.sp.EncodeAsIds(program)
-        
-        return torch.tensor([self.bos_id] + program[:(self.max_length - 2)] + [self.eos_id])
+
+        return torch.tensor([self.bos_id] + program[: (self.max_length - 2)] + [self.eos_id])
