@@ -60,9 +60,7 @@ class WindowLineCropTransform(Transform):
         self.window_size = window_size
 
     def __call__(self, sample):
-        assert isinstance(sample, dict) and "function" in sample, "Got bad sample in WindowLineCropTransform: " + str(
-            sample
-        )
+        assert isinstance(sample, dict) and "function" in sample, "Got bad sample in WindowLineCropTransform: " + str(sample)
         text = sample["function"]
         lines = text.split("\n")  # skip first and last line, usually function signature
         first_idx, last_idx = 1, max(2, len(lines) - 1 - self.window_size)
@@ -82,11 +80,7 @@ class CanonicalizeKeysTransform(Transform):
         out_dict = {}
         for dest_key, source_key in self.key_mapping.items():
             if source_key not in sample.keys():
-                logger.error(
-                    "Data sample missing key {}, has {}. Destination map was {}.".format(
-                        source_key, sample.keys(), dest_key
-                    )
-                )
+                logger.error("Data sample missing key {}, has {}. Destination map was {}.".format(source_key, sample.keys(), dest_key))
             out_dict[dest_key] = sample[source_key]
         return out_dict
 

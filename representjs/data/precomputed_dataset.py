@@ -13,14 +13,7 @@ class PrecomputedDataset(torch.utils.data.Dataset):
     """Defines a Dataset of unsupervised programs stored in pickle format."""
 
     def __init__(
-        self,
-        path,
-        sp,
-        min_alternatives=1,
-        limit_size=-1,
-        max_length=1024,
-        subword_regularization_alpha=0.1,
-        program_mode="identity",
+        self, path, sp, min_alternatives=1, limit_size=-1, max_length=1024, subword_regularization_alpha=0.1, program_mode="identity",
     ):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
         Arguments:

@@ -17,7 +17,5 @@ class CodeMLM(nn.Module):
         assert D == self.d_model
         features = self.encoder(im).view(L, B, D)  # LxBxD
         features = self.head(features).view(L, B, D)  # LxBxD
-        logits = torch.matmul(features, self.encoder.embedding.weight.transpose(0, 1)).view(
-            L, B, self.n_tokens
-        )  # [L, B, ntok]
+        logits = torch.matmul(features, self.encoder.embedding.weight.transpose(0, 1)).view(L, B, self.n_tokens)  # [L, B, ntok]
         return torch.transpose(logits, 0, 1).view(B, L, self.n_tokens)  # [B, T, ntok]

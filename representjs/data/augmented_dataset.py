@@ -17,9 +17,7 @@ from data.jsonl_dataset import JSONLinesDataset
 
 
 class AugmentedJSDataset(Dataset):
-    def __init__(
-        self, json_dataset: JSONLinesDataset, transform: Transform = None, max_length: int = 1024, contrastive=False
-    ):
+    def __init__(self, json_dataset: JSONLinesDataset, transform: Transform = None, max_length: int = 1024, contrastive=False):
         self.contrastive = contrastive
         self.json_dataset = json_dataset
         self.transform = transform
@@ -62,9 +60,7 @@ class PadCollateWrapper:
     def __call__(self, batch):
         batch_size = len(batch)
         if self.contrastive:
-            assert (
-                "data_key" in batch[0].keys() and "data_query" in batch[0].keys()
-            ), "Missing contrastive keys, {}".format(batch[0].keys())
+            assert "data_key" in batch[0].keys() and "data_query" in batch[0].keys(), "Missing contrastive keys, {}".format(batch[0].keys())
             data_key_list = [sample["data_key"] for sample in batch]
             data_query_list = [sample["data_query"] for sample in batch]
             data = pad_sequence(data_key_list + data_query_list, padding_value=self.pad_id, batch_first=True)  # [2B, T]
@@ -83,7 +79,9 @@ if __name__ == "__main__":
     from representjs import CSNJS_DIR
 
     # from pretrain import DEFAULT_CSNJS_TRAIN_FILEPATH
-    DEFAULT_CSNJS_TRAIN_FILEPATH = "/home/ajay/coderep/representjs/data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl"
+    DEFAULT_CSNJS_TRAIN_FILEPATH = (
+        "/home/ajay/coderep/representjs/data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl"
+    )
     from data.jsonl_dataset import get_csnjs_dataset
 
     SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")

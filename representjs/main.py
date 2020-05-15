@@ -29,9 +29,7 @@ CSNJS_TEST_FILEPATH = os.path.join(DATA_DIR, "javascript_test_0.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model")
 
 
-def _evaluate(
-    model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20
-):
+def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20):
     model.eval()
     pad_id = sp.PieceToId("[PAD]")
 
@@ -100,13 +98,7 @@ def calculate_f1_metric(
                 n_examples += 1
                 if logger_fn is not None:
                     logger_fn({"precision_item": precision_item, "recall_item": score_item, "f1_item": f1_item})
-                    logger_fn(
-                        {
-                            "precision_avg": precision / n_examples,
-                            "recall_avg": recall / n_examples,
-                            "f1_avg": f1 / n_examples,
-                        }
-                    )
+                    logger_fn({"precision_avg": precision / n_examples, "recall_avg": recall / n_examples, "f1_avg": f1 / n_examples})
     logger.debug(f"Test set evaluation (F1) took {t.interval:.3}s over {n_examples} samples")
     return precision / n_examples, recall / n_examples, f1 / n_examples
 
@@ -144,9 +136,7 @@ def test(
         augmentations=[],
     )
 
-    model = TransformerModel(
-        n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers
-    )
+    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
 
     if use_cuda:
@@ -167,9 +157,7 @@ def test(
     metric = F1MetricMethodName()
 
     with torch.no_grad():
-        precision, recall, f1 = calculate_f1_metric(
-            metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log
-        )
+        precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
     logger.info(f"F1: {f1:.5f}%")
@@ -259,9 +247,7 @@ def train(
     )
 
     # Create model
-    model = TransformerModel(
-        n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers
-    )
+    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
 
     # Load checkpoint

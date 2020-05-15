@@ -59,9 +59,7 @@ class TransformerModel(nn.Module):
         else:
             tgt_key_padding_mask = tgt_tok_ids == self.config["pad_id"]
             # memory_key_padding_mask = src_tok_ids == self.config['pad_id']
-        output = self.decoder(
-            tgt_emb, memory, tgt_mask=tgt_mask, memory_mask=None, tgt_key_padding_mask=tgt_key_padding_mask
-        )
+        output = self.decoder(tgt_emb, memory, tgt_mask=tgt_mask, memory_mask=None, tgt_key_padding_mask=tgt_key_padding_mask)
         #   memory_key_padding_mask=memory_key_padding_mask)
 
         logits = torch.matmul(output, self.encoder.embedding.weight.transpose(0, 1))  # [T, B, ntok]

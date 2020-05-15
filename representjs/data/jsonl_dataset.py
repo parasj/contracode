@@ -19,8 +19,7 @@ FUNCTION_ONLY_FIELDS = {"function": "function"}
 _num_invalid_id = 0
 _num_valid_id = 0
 _fix_function_crop_regexes = [
-    re.compile(r + r"(\s+|\()")
-    for r in [r"\A^unction", r"\A^nction", r"\A^ction", r"\A^tion", r"\A^ion", r"\A^on", r"\A^n"]
+    re.compile(r + r"(\s+|\()") for r in [r"\A^unction", r"\A^nction", r"\A^ction", r"\A^tion", r"\A^ion", r"\A^on", r"\A^n"]
 ]
 _valid_identifier_regex = re.compile(r"^[a-zA-Z_$][0-9a-zA-Z_$]*$")
 _url_regex = re.compile(r"https?://\S+\b")

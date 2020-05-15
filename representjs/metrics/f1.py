@@ -9,9 +9,7 @@ def gen_counter_items(counts: Counter):
 
 
 class F1MetricMethodName:
-    def __init__(
-        self, case_insensitive=True, ignore_empty=True, tokenize_camel_case=True, tokenize_snake_case=True, eps=1e-6
-    ):
+    def __init__(self, case_insensitive=True, ignore_empty=True, tokenize_camel_case=True, tokenize_snake_case=True, eps=1e-6):
         self.ignore_empty = ignore_empty
         self.case_insensitive = case_insensitive
         self.tokenize_camel_case = tokenize_camel_case
