@@ -55,7 +55,7 @@ class TransformerModel(nn.Module):
         if self.config["pad_id"] is None:
             assert False
             tgt_key_padding_mask = None
-            memory_key_padding_mask = None
+            # memory_key_padding_mask = None
         else:
             tgt_key_padding_mask = tgt_tok_ids == self.config["pad_id"]
             # memory_key_padding_mask = src_tok_ids == self.config['pad_id']

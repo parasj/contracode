@@ -272,7 +272,7 @@ def train(
         for key, value in pretrained_state_dict.items():
             # TODO: Try loading encoder_k -- has ema on parameters
             if key.startswith("encoder_k.") and "project_layer" not in key:
-                remapped_key = key[len("encoder_k.") :]
+                remapped_key = key[len("encoder_k."):]
                 logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
                 encoder_state_dict[remapped_key] = value
         model.encoder.load_state_dict(encoder_state_dict)
