@@ -58,9 +58,7 @@ def pretrain(
         )
     )
 
-    assert (
-        not use_cuda or torch.cuda.is_available()
-    ), "CUDA not available. Check env configuration, or pass --use_cuda False"
+    assert not use_cuda or torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
     assert loss_mode in ["infonce", "mlm"]
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -109,12 +107,7 @@ def pretrain(
         subword_regularization_alpha=subword_regularization_alpha,
     )
     train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=pad_collate,
-        num_workers=num_workers,
-        drop_last=True,
+        train_dataset, batch_size=batch_size, shuffle=True, collate_fn=pad_collate, num_workers=num_workers, drop_last=True,
     )
 
     # Create model
@@ -155,30 +148,6 @@ def pretrain(
                     },
                 }
                 loss = train_metrics["loss"]
-            elif loss_mode == "mlm":
-                seq, _ = batch  # BxL
-                if use_cuda:
-                    seq = seq.cuda()
-                # Mask sequence
-                # TODO: Should mask 15% of each code sequence, not 15% of all tokens
-                seq_masked = seq.clone()
-                mask = torch.rand(device=seq.device) < 0.15
-                seq_masked[mask].fill_(mask_id)
-                assert isinstance(model, CodeMLM)
-                output = model(seq_masked)  # BxLxVocab
-                target = None  # TODO: what is the target?
-                loss1 = F.cross_entropy(output, target)
-                # TODO: Remove accuracy?
-                acc1, acc5 = accuracy(output, target, topk=(1, 5))
-                train_metrics = {
-                    "loss": loss1,
-                    "log": {
-                        "pretrain/loss": loss1.item(),
-                        "pretrain/acc@1": acc1[0].item(),
-                        "pretrain/acc@5": acc5[0].item(),
-                        "pretrain/queue_ptr": model.module.queue_ptr.item(),
-                    },
-                }
             loss.backward()
             optimizer.step()
 

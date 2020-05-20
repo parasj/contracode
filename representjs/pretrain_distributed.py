@@ -10,15 +10,13 @@ import torch.nn.functional as F
 import tqdm
 import wandb
 from loguru import logger
-from torch import nn
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.utils.rnn import pad_sequence
 
+from models.code_mlm import CodeMLM
 from representjs import RUN_DIR, CSNJS_DIR
-from data import transforms
 from data.precomputed_dataset import PrecomputedDataset
-from data.jsonl_dataset import get_csnjs_dataset
 from models.code_moco import CodeMoCo
 from utils import accuracy, count_parameters
 
@@ -43,8 +41,37 @@ def training_step(model, batch, use_cuda=False):
     return {"loss": loss, "log": logs}
 
 
+def training_step_mlm(model, batch, mask_id: int, use_cuda=True):
+    assert isinstance(model, CodeMLM)
+    seq, _ = batch  # BxL
+    if use_cuda:
+        seq = seq.cuda()
+    # Mask sequence
+    # TODO: Should mask 15% of each code sequence, not 15% of all tokens
+    seq_masked = seq.clone()
+    mask = torch.rand(device=seq.device) < 0.15
+    seq_masked[mask].fill_(mask_id)
+    output = model(seq_masked)  # BxLxVocab
+    target = None  # TODO: what is the target?
+    raise NotImplementedError("Target not implemented yet")
+
+    loss = F.cross_entropy(output, target)
+    # TODO: Remove accuracy?
+    acc1, acc5 = accuracy(output, target, topk=(1, 5))
+    return {
+        "loss": loss,
+        "log": {
+            "pretrain/loss": loss.item(),
+            "pretrain/acc@1": acc1[0].item(),
+            "pretrain/acc@5": acc5[0].item(),
+            "pretrain/queue_ptr": model.module.queue_ptr.item(),
+        },
+    }
+
+
 def pretrain(
     run_name: str,
+    #
     # Data
     train_filepath: str = DEFAULT_CSNJS_TRAIN_FILEPATH,
     spm_filepath: str = DEFAULT_SPM_UNIGRAM_FILEPATH,
@@ -53,37 +80,37 @@ def pretrain(
     # max_sequence_length=1024,
     subword_regularization_alpha: float = 0,
     program_mode="contrastive",
+    loss_mode="infonce",  # infonce or mlm
     min_alternatives=1,
+    #
     # Optimization
     num_epochs: int = 100,
     save_every: int = 1,
     batch_size: int = 256,
     lr: float = 8e-4,
     adam_betas=(0.9, 0.98),
+    #
     # Distributed
     rank: int = -1,
     dist_url: str = "env://",
     dist_backend: str = "nccl",
+    #
     # Computational
     use_cuda: bool = True,
     seed: int = 0,
 ):
     run_name = str(run_name)  # support numerical run ids
-    slurm_job_id, slurm_job_hostname = (
-        os.environ.get("SLURM_JOB_ID"),
-        os.environ.get("SLURM_JOB_NODELIST"),
-    )
+    slurm_job_id = os.environ.get("SLURM_JOB_ID")
+    slurm_job_hostname = os.environ.get("SLURM_JOB_NODELIST")
     config = locals()
     logger.info("Training configuration: {}".format(config))
-    logger.info(
-        "CUDA_VISIBLE_DEVICES = '{}', CUDA_DEVICE_ORDER = '{}'".format(
-            os.environ.get("CUDA_VISIBLE_DEVICES"), os.environ.get("CUDA_DEVICE_ORDER")
-        )
-    )
+    logger.info(f"CUDA_VISIBLE_DEVICES = '{os.environ.get('CUDA_VISIBLE_DEVICES')}'")
+    logger.info(f"CUDA_DEVICE_ORDER = '{os.environ.get('CUDA_DEVICE_ORDER')}'")
 
-    assert (
-        not use_cuda or torch.cuda.is_available()
-    ), "CUDA not available. Check env configuration, or pass --use_cuda False"
+    assert program_mode in ["contrastive", "identity", "augmentation"]
+    assert loss_mode == "infonce" or loss_mode == "mlm"
+    assert not (program_mode == "contrastive" and loss_mode == "mlm")
+    assert not use_cuda or torch.cuda.is_available()
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -95,7 +122,7 @@ def pretrain(
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
 
     # Create training dataset and dataloader
-    # assert train_filepath.endswith(".pickle")
+    assert train_filepath.endswith(".pickle") or train_filepath.endswith(".gz")
 
     # Setup distributed
     ngpus_per_node = torch.cuda.device_count()
@@ -106,9 +133,7 @@ def pretrain(
 def pretrain_worker(gpu, ngpus_per_node, config):
     if config["rank"] % ngpus_per_node == 0:
         # NOTE: Should this be called by the 0th spawned process?
-        wandb.init(
-            name=config["run_name"], config=config, job_type="training", project="moco-pretrain", entity="ml4code",
-        )
+        wandb.init(name=config["run_name"], config=config, job_type="training", project="moco-pretrain", entity="ml4code")
 
     if gpu is not None:
         logger.info("Use GPU: {} for training".format(gpu))
@@ -119,15 +144,13 @@ def pretrain_worker(gpu, ngpus_per_node, config):
     # global rank among all the processes
     config["rank"] = config["rank"] * ngpus_per_node + gpu
     dist.init_process_group(
-        backend=config["dist_backend"],
-        init_method=config["dist_url"],
-        world_size=config["world_size"],
-        rank=config["rank"],
+        backend=config["dist_backend"], init_method=config["dist_url"], world_size=config["world_size"], rank=config["rank"]
     )
 
     sp = spm.SentencePieceProcessor()
     sp.Load(config["spm_filepath"])
     pad_id = sp.PieceToId("[PAD]")
+    mask_id = sp.PieceToId("[MASK]")
 
     def pad_collate(batch):
         B = len(batch)
@@ -135,7 +158,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
             X1, X2 = zip(*batch)
             X = X1 + X2
         else:
-            raise NotImplementedError()
+            X = batch
 
         # Create padded tensor for batch, [B, T] or [2B, T]
         X = pad_sequence(X, batch_first=True, padding_value=pad_id)
@@ -146,7 +169,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
             X = torch.reshape(X, (2, B, -1))
             X = torch.transpose(X, 0, 1)
             assert X.shape == (B, 2, T)
-        return (X, None)
+        return X, None
 
     # Create model
     model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
@@ -202,7 +225,12 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
         for batch in pbar:
             optimizer.zero_grad()
-            train_metrics = training_step(model, batch, use_cuda=config["use_cuda"])
+            if config["loss_mode"] == "infonce":
+                train_metrics = training_step(model, batch, use_cuda=config["use_cuda"])
+            elif config["loss_mode"] == "mlm":
+                train_metrics = training_step_mlm(model, batch, mask_id=mask_id, use_cuda=config["use_cuda"])
+            else:
+                raise ValueError("Bad loss type")
             loss = train_metrics["loss"]
             loss.backward()
             optimizer.step()
@@ -223,9 +251,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
                         "global_step": global_step,
                         "config": config,
                     }
-                    model_file = os.path.join(
-                        config["run_dir"], f"ckpt_pretrain_ep{epoch:04d}_step{global_step:07d}.pth"
-                    )
+                    model_file = os.path.join(config["run_dir"], f"ckpt_pretrain_ep{epoch:04d}_step{global_step:07d}.pth")
                     logger.info(f"Saving checkpoint to {model_file}...")
                     torch.save(checkpoint, model_file)
                     # wandb.save(model_file)
