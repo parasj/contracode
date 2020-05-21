@@ -1,7 +1,8 @@
 import requests
 import json
 
-transform_payload = [{'src': "const x = function(arr) { console.log('hi', arr); }", 'augmentations': [	
+#transform_payload = [{'src': "const x = function(arr) { console.log('hi', arr); }", 'augmentations': [	
+transform_payload = [{'src': "function x(arr) {   if (arr.length === 1) {\n    // return once we hit an array with a single item\n    return arr\n  }\n\n  const middle = Math.floor(arr.length / 2) // get the middle item of the array rounded down\n  const left = arr.slice(0, middle) // items on the left side\n  const right = arr.slice(middle) // items on the right side\n\n    console.log('sorting complete');  return merge(\n    mergeSort(left),\n    mergeSort(right)\n) }", 'augmentations': [	
         {"fn": "rename_variable", "prob": 0.25},
         {"fn": "insert_var_declaration", "prob": 0.25},
         {"fn": "terser", "prob": 0.5, "prob_mangle": 0.1},
