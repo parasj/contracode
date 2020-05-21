@@ -80,11 +80,7 @@ def training_step_mlm(model, batch, mask_id: int, pad_id: int, vocab_start_idx: 
     acc1, acc5 = accuracy(output[targets != pad_id], targets[targets != pad_id], topk=(1, 5))
     return {
         "loss": loss,
-        "log": {
-            "pretrain/loss": loss.item(),
-            "pretrain/acc@1": acc1[0].item(),
-            "pretrain/acc@5": acc5[0].item(),
-        },
+        "log": {"pretrain/loss": loss.item(), "pretrain/acc@1": acc1[0].item(), "pretrain/acc@5": acc5[0].item()},
     }
 
 
@@ -153,8 +149,8 @@ def pretrain(
 def pretrain_worker(gpu, ngpus_per_node, config):
     chief_node = gpu == 0
     if chief_node:
-        project = "bert-pretrain" if config['loss_mode'] == "mlm" else "moco-pretrain"
-        wandb.init(name=config['run_name'], config=config, job_type="training", project=project, entity="ml4code")
+        project = "bert-pretrain" if config["loss_mode"] == "mlm" else "moco-pretrain"
+        wandb.init(name=config["run_name"], config=config, job_type="training", project=project, entity="ml4code")
 
     if gpu is not None:
         logger.info("Use GPU: {} for training".format(gpu))

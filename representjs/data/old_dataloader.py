@@ -34,7 +34,7 @@ def _augment(transform_payload: List[dict]) -> List[str]:
             logger.error(f"Exception in _augment transform stderr: {stderr}")
             transformed = [prog["src"] for prog in transform_payload]
     else:
-        logger.error(f"Non-zero exit code in _augment:")
+        logger.error("Non-zero exit code in _augment:")
         logger.error(f"Exception in _augment transform input: {transform_payload}")
         logger.error(f"Exception in _augment transform stdout: {stdout}")
         logger.error(f"Exception in _augment transform stderr: {stderr}")
