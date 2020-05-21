@@ -16,7 +16,7 @@ from data.util import dispatch_to_node
 def _augment(transform_payload: List[dict]) -> List[str]:
     # Transform code
     transform_payload = json.dumps(transform_payload)
-    is_successful, stdout, stderr = dispatch_to_node('transform.js', transform_payload)
+    is_successful, stdout, stderr = dispatch_to_node("transform.js", transform_payload)
     if is_successful:
         try:
             transformed = json.loads(stdout)
@@ -43,17 +43,15 @@ def _augment(transform_payload: List[dict]) -> List[str]:
     return transformed
 
 
-_headers = {'Content-type': 'application/json', 'Accept': 'application_json'}
+_headers = {"Content-type": "application/json", "Accept": "application_json"}
+
+
 def _augment_server(transform_payload: List[dict]) -> List[str]:
     # Transform code
     transform_payload = transform_payload
     response = None
     try:
-        response = requests.post(
-            'http://127.0.0.1:3000',
-            data=json.dumps(transform_payload),
-            headers=_headers,
-            timeout=5)
+        response = requests.post("http://127.0.0.1:3000", data=json.dumps(transform_payload), headers=_headers, timeout=5)
         assert response.status_code == 200
         transformed = response.json()
         assert isinstance(transformed, list)
@@ -68,8 +66,14 @@ def _augment_server(transform_payload: List[dict]) -> List[str]:
     return transformed
 
 
-def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProcessor, program_mode: str,
-                           subword_regularization_alpha: float, max_length: int, max_target_length: int=256):
+def get_javascript_collate(
+    augmentations: List[dict],
+    sp: spm.SentencePieceProcessor,
+    program_mode: str,
+    subword_regularization_alpha: float,
+    max_length: int,
+    max_target_length: int = 256,
+):
     assert program_mode in ["contrastive", "augmentation", "identity"]
     bos_id = sp.PieceToId("<s>")
     eos_id = sp.PieceToId("</s>")
@@ -110,13 +114,13 @@ def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProce
             X = [sp.EncodeAsIds(prog) for prog in X]
 
         # Create padded tensor for batch, [B, T] or [2B, T]
-        X = [torch.tensor([bos_id] + ids[:(max_length - 2)] + [eos_id]) for ids in X]
+        X = [torch.tensor([bos_id] + ids[: (max_length - 2)] + [eos_id]) for ids in X]
         X = pad_sequence(X, batch_first=True, padding_value=pad_id)
 
         # Create padded tensor for labels (good for seq2seq tasks)
         if "label" in examples[0]:
             label = [sp.EncodeAsIds(ex["label"]) for ex in examples]
-            label = [torch.tensor([bos_id] + ids[:(max_target_length - 2)] + [eos_id]) for ids in label]
+            label = [torch.tensor([bos_id] + ids[: (max_target_length - 2)] + [eos_id]) for ids in label]
             label = pad_sequence(label, batch_first=True, padding_value=pad_id)
         else:
             label = None
@@ -134,15 +138,16 @@ def get_javascript_collate(augmentations: List[dict], sp: spm.SentencePieceProce
 
 
 def javascript_dataloader(
-        *args,
-        augmentations: List[dict],
-        sp: spm.SentencePieceProcessor,
-        program_mode: str = "identity",
-        subword_regularization_alpha: float = 0,
-        max_length: int = 1024,
-        max_target_length: int = 256,
-        spm_unigram_path: str = None,
-        **kwargs):
+    *args,
+    augmentations: List[dict],
+    sp: spm.SentencePieceProcessor,
+    program_mode: str = "identity",
+    subword_regularization_alpha: float = 0,
+    max_length: int = 1024,
+    max_target_length: int = 256,
+    spm_unigram_path: str = None,
+    **kwargs,
+):
     """
     Arguments:
         program_mode
@@ -152,11 +157,13 @@ def javascript_dataloader(
             sp = spm.SentencePieceProcessor()
             sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram.model")
     """
-    assert 'collate_fn' not in kwargs
+    assert "collate_fn" not in kwargs
     if sp is None:
         sp = spm.SentencePieceProcessor()
         sp.load(spm_unigram_path)
-    collate_fn = get_javascript_collate(augmentations, sp, program_mode, subword_regularization_alpha, max_length, max_target_length=max_target_length)
+    collate_fn = get_javascript_collate(
+        augmentations, sp, program_mode, subword_regularization_alpha, max_length, max_target_length=max_target_length
+    )
     return torch.utils.data.DataLoader(*args, collate_fn=collate_fn, **kwargs)
 
 
@@ -165,16 +172,16 @@ if __name__ == "__main__":
     sp = spm.SentencePieceProcessor()
     sp.Load("data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model")
 
-    augmentation_examples = [	
-        {"fn": "insert_var_declaration", "prob": 0.1},	
-        {"fn": "rename_variable", "prob": 0.1},	
+    augmentation_examples = [
+        {"fn": "insert_var_declaration", "prob": 0.1},
+        {"fn": "rename_variable", "prob": 0.1},
         # 1 - .9^3 chance of at least one of compress, mangle, and compress_mangle being applied
         # {"fn": "compress", "prob": 0.1},
         # {"fn": "mangle", "prob": 0.1},
         # {"fn": "compress_mangle", "prob": 0.1},
         # {"fn": "remove_comments", "prob": 0.2},
         {"fn": "terser", "prob": 0.5, "prob_mangle": 0.1},
-        {"fn": "sample_lines", "line_length_pct": 0.9},	
+        {"fn": "sample_lines", "line_length_pct": 0.9},
     ]
     for augmentation in augmentation_examples:
         logger.info(f"Testing augmentation {augmentation}")
@@ -182,9 +189,14 @@ if __name__ == "__main__":
         train_filepath = os.path.join(data_dir, "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl")
         train_dataset = JSONLinesDataset(train_filepath, limit_size=5)
         train_loader = javascript_dataloader(
-            train_dataset, batch_size=2, shuffle=False,
-            augmentations=[augmentation], sp=sp, program_mode="augmentation",
-            subword_regularization_alpha=0.1)
+            train_dataset,
+            batch_size=2,
+            shuffle=False,
+            augmentations=[augmentation],
+            sp=sp,
+            program_mode="augmentation",
+            subword_regularization_alpha=0.1,
+        )
         for X, label in train_loader:
             logger.info(f"X shape: {X.shape}")
             logger.info(f"Label: {label}")

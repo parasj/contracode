@@ -9,7 +9,7 @@ from representjs import PACKAGE_ROOT
 
 def dispatch_to_node(node_file: str, stdin: Optional[str] = None, timeout_s: int = 5) -> Tuple[bool, str, str]:
     absolute_script_path = str((PACKAGE_ROOT / "node_src" / node_file).resolve())
-    p = Popen(['timeout', timeout_s, 'node', absolute_script_path], stdout=PIPE, stdin=PIPE, stderr=PIPE)
+    p = Popen(["timeout", timeout_s, "node", absolute_script_path], stdout=PIPE, stdin=PIPE, stderr=PIPE)
     if stdin is not None:
         p.stdin.write(stdin.encode())
     stdout, stderr = p.communicate()
@@ -21,6 +21,7 @@ def dispatch_to_node(node_file: str, stdin: Optional[str] = None, timeout_s: int
 
 class Timer:
     """from https://preshing.com/20110924/timing-your-code-using-pythons-with-statement/"""
+
     def __enter__(self):
         self.start = time.clock()
         return self
@@ -30,13 +31,13 @@ class Timer:
         self.interval = self.end - self.start
 
 
-_newline_regex = re.compile(r'\n')
-_whitespace_regex = re.compile(r'[ \t\n]+')
+_newline_regex = re.compile(r"\n")
+_whitespace_regex = re.compile(r"[ \t\n]+")
 
 
 def normalize_program(fn: str):
     if not isinstance(fn, (str, bytes)):
         logger.error(f"normalize_program got non-str: {type(fn)}, {fn}")
-    fn = _newline_regex.sub(r' [EOL]', fn)
-    fn = _whitespace_regex.sub(' ', fn)
+    fn = _newline_regex.sub(r" [EOL]", fn)
+    fn = _whitespace_regex.sub(" ", fn)
     return fn
