@@ -41,23 +41,40 @@ def training_step(model, batch, use_cuda=False):
     return {"loss": loss, "log": logs}
 
 
-def training_step_mlm(model, batch, mask_id: int, use_cuda=True):
-    assert isinstance(model, CodeMLM)
-    seq, _ = batch  # BxL
+def mask_mlm(seq, pad_id, mask_id, vocab_start_range, vocab_end_range):
+    # The training data generator chooses 15% of the token positions at random for prediction.
+    # If the i-th token is chosen, we replace the i-th token with
+    # (0) not masked
+    # (1) the [MASK] token 80% of the time (0.12)
+    # (2) a random token 10% of the time (0.015)
+    # (3) the unchanged i-th token 10% of the time (0.015)
+    #
+    # https://github.com/codertimo/BERT-pytorch/blob/master/bert_pytorch/dataset/dataset.py#L63
+    rand_replacements = torch.zero_like(seq, dtype=torch.long).random_(vocab_start_range, vocab_end_range)
+
+    masked_tokens = (torch.rand_like(seq, dtype=torch.float) < 0.15) & (seq != pad_id)
+    mask_type_prob = torch.rand_like(seq, dtype=torch.float)
+    mask_token_prob = (mask_type_prob < 0.8) & masked_tokens
+    random_token_prob = (mask_type_prob < 0.9) & (mask_type_prob >= 0.8) & masked_tokens
+    identity_token_prob = (mask_type_prob >= 0.9) & masked_tokens
+    assert torch.sum(masked_tokens) == torch.sum(mask_token_prob | random_token_prob | identity_token_prob)
+
+    targets = torch.zeros_like(seq).fill_(pad_id)
+    targets[masked_tokens] = seq[masked_tokens]
+
+    seq[mask_token_prob] = mask_id
+    seq[random_token_prob] = rand_replacements[random_token_prob]
+    return seq, targets
+
+
+def training_step_mlm(model, batch, mask_id: int, pad_id: int, vocab_start_idx: int, vocab_end_idx: int, use_cuda=True):
+    seq, _ = batch  # B x L
     if use_cuda:
         seq = seq.cuda()
-    # Mask sequence
-    # TODO: Should mask 15% of each code sequence, not 15% of all tokens
-    seq_masked = seq.clone()
-    mask = torch.rand(device=seq.device) < 0.15
-    seq_masked[mask].fill_(mask_id)
-    output = model(seq_masked)  # BxLxVocab
-    target = None  # TODO: what is the target?
-    raise NotImplementedError("Target not implemented yet")
-
-    loss = F.cross_entropy(output, target)
-    # TODO: Remove accuracy?
-    acc1, acc5 = accuracy(output, target, topk=(1, 5))
+    seq_masked, targets = mask_mlm(seq, pad_id, mask_id, vocab_start_idx, vocab_end_idx)
+    output = model(seq_masked)  # B x L x Vocab
+    loss = F.cross_entropy(output, targets, ignore_index=pad_id)
+    acc1, acc5 = accuracy(output[targets != pad_id], targets[targets != pad_id], topk=(1, 5))
     return {
         "loss": loss,
         "log": {
@@ -103,6 +120,7 @@ def pretrain(
     slurm_job_id = os.environ.get("SLURM_JOB_ID")
     slurm_job_hostname = os.environ.get("SLURM_JOB_NODELIST")
     config = locals()
+    logger.info(f"Config = \n{config}")
     logger.info("Training configuration: {}".format(config))
     logger.info(f"CUDA_VISIBLE_DEVICES = '{os.environ.get('CUDA_VISIBLE_DEVICES')}'")
     logger.info(f"CUDA_DEVICE_ORDER = '{os.environ.get('CUDA_DEVICE_ORDER')}'")
@@ -172,8 +190,14 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         return X, None
 
     # Create model
-    model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
-    logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
+    if config["loss_mode"] == "infonce":
+        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
+        logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
+    elif config["loss_mode"] == "mlm":
+        model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id)
+        logger.info(f"Created CodeMLM model with {count_parameters(model)} params")
+    else:
+        raise ValueError(f"Bad loss mode {config['loss_mode']}")
 
     assert config["use_cuda"]
     if gpu is not None:
@@ -198,7 +222,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
     train_dataset = PrecomputedDataset(
         config["train_filepath"],
         min_alternatives=config["min_alternatives"],
-        program_mode="contrastive",
+        program_mode=config["program_mode"],
         limit_size=config["limit_dataset_size"],
         sp=sp,
         subword_regularization_alpha=config["subword_regularization_alpha"],
@@ -228,7 +252,10 @@ def pretrain_worker(gpu, ngpus_per_node, config):
             if config["loss_mode"] == "infonce":
                 train_metrics = training_step(model, batch, use_cuda=config["use_cuda"])
             elif config["loss_mode"] == "mlm":
-                train_metrics = training_step_mlm(model, batch, mask_id=mask_id, use_cuda=config["use_cuda"])
+                # replace tokens randomly with tokens from _ (8)
+                train_metrics = training_step_mlm(
+                    model, batch, pad_id=pad_id, mask_id=mask_id, vocab_start_range=8, vocab_end_range=7999, use_cuda=config["use_cuda"]
+                )
             else:
                 raise ValueError("Bad loss type")
             loss = train_metrics["loss"]

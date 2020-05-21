@@ -13,9 +13,9 @@ class CodeMLM(nn.Module):
         self.head = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.LayerNorm(d_model))
 
     def forward(self, im):
-        L, B, D = im.shape
+        features = self.encoder(im)  # L x B x D
+        L, B, D = features.shape
         assert D == self.d_model
-        features = self.encoder(im).view(L, B, D)  # LxBxD
-        features = self.head(features).view(L, B, D)  # LxBxD
+        features = self.head(features).view(L, B, D)  # L x B x D
         logits = torch.matmul(features, self.encoder.embedding.weight.transpose(0, 1)).view(L, B, self.n_tokens)  # [L, B, ntok]
         return torch.transpose(logits, 0, 1).view(B, L, self.n_tokens)  # [B, T, ntok]
