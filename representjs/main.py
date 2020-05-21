@@ -1,8 +1,10 @@
+from operator import itemgetter
 import os
 import random
 
 import fire
 import numpy as np
+import pickle
 import sentencepiece as spm
 import torch
 import torch.nn as nn
@@ -211,6 +213,8 @@ def train(
         label_mode="identifier",
         label_tag_index_path=None,
         label_tag_index_size=100,
+        label_tags=None,
+        require_tags=False,
         num_workers=1,
         limit_dataset_size=-1,
 
@@ -261,8 +265,21 @@ def train(
 
     # Create training dataset and dataloader
     logger.info(f"Training data path {train_filepath}")
+    if label_tag_index_path:
+        # Load list of tags created by make_method_name_tag_index.py
+        logger.info(f"Loading label tag index from {label_tag_index_path}")
+        with open(label_tag_index_path, "rb") as tag_index_f:
+            tag_index = pickle.load(tag_index_f)
+            label_tags = tag_index["token_counter"].most_common(label_tag_index_size)
+            label_tags = list(map(itemgetter(0), label_tags))
+            label_tags.sort()
+            logger.debug(f"Using top {label_tag_index_size} tags as labels: {label_tags}")
+    elif label_tags:
+        pass
+    else:
+        label_tags = None
     train_dataset = get_csnjs_dataset(
-        train_filepath, label_mode, label_tag_index_path, label_tag_index_size, limit_size=limit_dataset_size)
+        train_filepath, label_mode, label_tags, require_tags, limit_size=limit_dataset_size)
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = javascript_dataloader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
@@ -272,7 +289,7 @@ def train(
     # Create eval dataset and dataloader
     logger.info(f"Eval data path {eval_filepath}")
     eval_dataset = get_csnjs_dataset(
-        eval_filepath, label_mode, label_tag_index_path, label_tag_index_size, limit_size=limit_dataset_size)
+        eval_filepath, label_mode, label_tags, require_tags, limit_size=limit_dataset_size)
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = javascript_dataloader(
         eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,
@@ -321,6 +338,24 @@ def train(
 
     global_step = 0
     min_eval_loss = float("inf")
+
+    # Evaluate
+    epoch = 0
+    logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
+    if label_tag_index_path:
+        eval_metrics = _evaluate_tagging(model, eval_loader, use_cuda=use_cuda)
+        eval_loss = -eval_metrics["eval_loss"]
+        for key, value in eval_metrics.items():
+            logger.info(f"Evaluation {key} after epoch {epoch} ({global_step} steps): {value:.4f}")
+        eval_metrics = {f"label-{label_mode}-tagging/{key}": value for key, value in eval_metrics.items()}
+        eval_metrics["epoch"] = epoch
+        wandb.log(eval_metrics, step=global_step)
+    else:
+        max_decode_len = 20 if label_mode == "identifier" else 200
+        eval_loss = _evaluate(model, eval_loader, sp, use_cuda=use_cuda, max_decode_len=max_decode_len)
+        logger.info(f"Evaluation loss after epoch {epoch} ({global_step} steps): {eval_loss:.4f}")
+        wandb.log({"epoch": epoch, f"label-{label_mode}/eval_loss": eval_loss}, step=global_step)
+
     for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         if train_decoder_only:

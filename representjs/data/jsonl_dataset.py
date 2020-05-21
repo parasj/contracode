@@ -109,6 +109,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
                  src_function_key='function',
                  src_method_name_key='identifier',
                  label_tags=None,
+                 require_tags=False,
                  **kwargs):
         """Create a JSONLinesDataset given a path and field mapping dictionary.
         Arguments:
@@ -133,21 +134,23 @@ class JSONLinesDataset(torch.utils.data.Dataset):
         for line in tqdm.tqdm(reader, desc=full_path.name, total=limit_size if limit_size >= 0 else 1843099):
             example = _make_example(line, fields, require_fields, src_function_key, src_method_name_key)
             if example:
-                self.examples.append(example)
                 if 'label' in example.keys():
                     label_char_set.update(example['label'])
                     if label_tags:
                         # Split the label into tags and create a one-hot label
-                        tokens = split_method_name(example['label'])
+                        tokens = split_method_name(example['label'], case_insensitive=True)
                         label = torch.zeros(len(label_tags), dtype=torch.long)
                         for i, tag in enumerate(label_tags):
                             if tag in tokens:
                                 label[i] = 1
+                        if require_tags and label.sum() == 0:
+                            continue
                         example['label'] = label
                 if limit_size >= 0 and len(self.examples) >= limit_size:
                     print()
                     logger.info(f"WARNING: Limiting dataset size to {limit_size}")
                     break
+                self.examples.append(example)
             if debug_charset and len(label_char_set) != nl:
                 logger.debug(f"update label char set: {label_char_set}")
                 nl = len(label_char_set)
@@ -165,7 +168,7 @@ class JSONLinesDataset(torch.utils.data.Dataset):
         return self.examples[idx]
 
 
-def get_csnjs_dataset(filepath, label_mode, label_tag_index_path=None, label_tag_index_size=100, limit_size=-1):
+def get_csnjs_dataset(filepath, label_mode, label_tags=None, require_tags=False, limit_size=-1):
     """
     Returns dataset for CodeSearchNet JavaScript language,
     which contains datapoints as dicts with keys "function" and "label"
@@ -187,23 +190,12 @@ def get_csnjs_dataset(filepath, label_mode, label_tag_index_path=None, label_tag
         dataset_fields = {"function": "function"}
         dataset_require_fields = []
 
-    if label_tag_index_path:
-        # Load list of tags created by make_method_name_tag_index.py
-        logger.info(f"Loading label tag index from {label_tag_index_path}")
-        with open(label_tag_index_path, "rb") as tag_index_f:
-            tag_index = pickle.load(tag_index_f)
-            label_tags = tag_index["token_counter"].most_common(label_tag_index_size)
-            label_tags = list(map(itemgetter(0), label_tags))
-            label_tags.sort()
-            logger.debug(f"Using top {label_tag_index_size} tags as labels: {label_tags}")
-    else:
-        label_tags = None
-
     dataset = JSONLinesDataset(filepath,
                                fields=dataset_fields,
                                require_fields=dataset_require_fields,
                                limit_size=limit_size,
                                src_function_key=src_function_key,
                                src_method_name_key=src_method_name_key,
-                               label_tags=label_tags)
+                               label_tags=label_tags,
+                               require_tags=require_tags)
     return dataset
