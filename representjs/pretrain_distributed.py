@@ -50,7 +50,7 @@ def mask_mlm(seq, pad_id, mask_id, vocab_start_range, vocab_end_range):
     # (3) the unchanged i-th token 10% of the time (0.015)
     #
     # https://github.com/codertimo/BERT-pytorch/blob/master/bert_pytorch/dataset/dataset.py#L63
-    rand_replacements = torch.zero_like(seq, dtype=torch.long).random_(vocab_start_range, vocab_end_range)
+    rand_replacements = torch.zeros_like(seq, dtype=torch.long).random_(vocab_start_range, vocab_end_range)
 
     masked_tokens = (torch.rand_like(seq, dtype=torch.float) < 0.15) & (seq != pad_id)
     mask_type_prob = torch.rand_like(seq, dtype=torch.float)
@@ -71,9 +71,12 @@ def training_step_mlm(model, batch, mask_id: int, pad_id: int, vocab_start_idx: 
     seq, _ = batch  # B x L
     if use_cuda:
         seq = seq.cuda()
+    B, L = seq.shape
     seq_masked, targets = mask_mlm(seq, pad_id, mask_id, vocab_start_idx, vocab_end_idx)
     output = model(seq_masked)  # B x L x Vocab
-    loss = F.cross_entropy(output, targets, ignore_index=pad_id)
+    assert targets.shape == (B, L), f"{targets.shape} versus {B}x{L}"
+    assert output.shape == (B, L, output.shape[-1]), output.shape
+    loss = F.cross_entropy(output.flatten(end_dim=1), targets.flatten(), ignore_index=pad_id)
     acc1, acc5 = accuracy(output[targets != pad_id], targets[targets != pad_id], topk=(1, 5))
     return {
         "loss": loss,
@@ -81,7 +84,6 @@ def training_step_mlm(model, batch, mask_id: int, pad_id: int, vocab_start_idx: 
             "pretrain/loss": loss.item(),
             "pretrain/acc@1": acc1[0].item(),
             "pretrain/acc@5": acc5[0].item(),
-            "pretrain/queue_ptr": model.module.queue_ptr.item(),
         },
     }
 
@@ -216,7 +218,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-9)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=0.01)
 
     # Setup data
     train_dataset = PrecomputedDataset(
@@ -254,7 +256,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
             elif config["loss_mode"] == "mlm":
                 # replace tokens randomly with tokens from _ (8)
                 train_metrics = training_step_mlm(
-                    model, batch, pad_id=pad_id, mask_id=mask_id, vocab_start_range=8, vocab_end_range=7999, use_cuda=config["use_cuda"]
+                    model, batch, pad_id=pad_id, mask_id=mask_id, vocab_start_idx=8, vocab_end_idx=7999, use_cuda=config["use_cuda"]
                 )
             else:
                 raise ValueError("Bad loss type")
