@@ -151,9 +151,10 @@ def pretrain(
 
 
 def pretrain_worker(gpu, ngpus_per_node, config):
-    if config["rank"] % ngpus_per_node == 0:
-        # NOTE: Should this be called by the 0th spawned process?
-        wandb.init(name=config["run_name"], config=config, job_type="training", project="moco-pretrain", entity="ml4code")
+    chief_node = gpu == 0
+    if chief_node:
+        project = "bert-pretrain" if config['loss_mode'] == "mlm" else "moco-pretrain"
+        wandb.init(name=config['run_name'], config=config, job_type="training", project=project, entity="ml4code")
 
     if gpu is not None:
         logger.info("Use GPU: {} for training".format(gpu))
@@ -267,7 +268,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
             global_step += 1
             pbar.set_description(f"epoch {epoch} step {global_step} loss {loss.item():.4f}")
 
-            if config["rank"] % ngpus_per_node == 0:
+            if chief_node:
                 # Log loss
                 wandb.log(dict(epoch=epoch, **train_metrics["log"]), step=global_step)
 
@@ -283,7 +284,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
                     model_file = os.path.join(config["run_dir"], f"ckpt_pretrain_ep{epoch:04d}_step{global_step:07d}.pth")
                     logger.info(f"Saving checkpoint to {model_file}...")
                     torch.save(checkpoint, model_file)
-                    # wandb.save(model_file)
+                    wandb.save(str(model_file))
                     logger.info("Done.")
 
 
