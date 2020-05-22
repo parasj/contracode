@@ -13,6 +13,7 @@ from loguru import logger
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.utils.rnn import pad_sequence
+from torch.optim.lr_scheduler import LambdaLR
 
 from models.code_mlm import CodeMLM
 from representjs import RUN_DIR, CSNJS_DIR
@@ -23,6 +24,18 @@ from utils import accuracy, count_parameters
 DEFAULT_CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 DEFAULT_SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
 
+"""from https://huggingface.co/transformers/_modules/transformers/optimization.html"""
+
+
+def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
+    """ Create a schedule with a learning rate that decreases linearly after
+    linearly increasing during a warmup period.
+    """
+    def lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        return max(0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps)))
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 def training_step(model, batch, use_cuda=False):
     imgs, _ = batch
@@ -67,12 +80,13 @@ def mask_mlm(seq, pad_id, mask_id, vocab_start_range, vocab_end_range):
     return seq, targets
 
 
-def training_step_mlm(model, batch, mask_id: int, pad_id: int, vocab_start_idx: int, vocab_end_idx: int, use_cuda=True):
+def training_step_mlm(sp, model, batch, mask_id: int, pad_id: int, vocab_start_idx: int, vocab_end_idx: int, use_cuda=True):
     seq, _ = batch  # B x L
     if use_cuda:
         seq = seq.cuda()
     B, L = seq.shape
     seq_masked, targets = mask_mlm(seq, pad_id, mask_id, vocab_start_idx, vocab_end_idx)
+    logger.debug(f"Example transform:\t{sp.DecodeIds(seq_masked[0].cpu().numpy().tolist())}")
     output = model(seq_masked)  # B x L x Vocab
     assert targets.shape == (B, L), f"{targets.shape} versus {B}x{L}"
     assert output.shape == (B, L, output.shape[-1]), output.shape
@@ -112,7 +126,7 @@ def pretrain(
     #
     # Computational
     use_cuda: bool = True,
-    seed: int = 0,
+    seed: int = 0
 ):
     run_name = str(run_name)  # support numerical run ids
     slurm_job_id = os.environ.get("SLURM_JOB_ID")
@@ -215,7 +229,8 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=0)
+    sched = get_linear_schedule_with_warmup(optimizer, 5000, 200000)
 
     # Setup data
     train_dataset = PrecomputedDataset(
@@ -253,19 +268,20 @@ def pretrain_worker(gpu, ngpus_per_node, config):
             elif config["loss_mode"] == "mlm":
                 # replace tokens randomly with tokens from _ (8)
                 train_metrics = training_step_mlm(
-                    model, batch, pad_id=pad_id, mask_id=mask_id, vocab_start_idx=8, vocab_end_idx=7999, use_cuda=config["use_cuda"]
+                    sp, model, batch, pad_id=pad_id, mask_id=mask_id, vocab_start_idx=8, vocab_end_idx=7999, use_cuda=config["use_cuda"]
                 )
             else:
                 raise ValueError("Bad loss type")
             loss = train_metrics["loss"]
             loss.backward()
             optimizer.step()
+            sched.step()
 
             global_step += 1
             pbar.set_description(f"epoch {epoch} step {global_step} loss {loss.item():.4f}")
 
             if chief_node:
-                # Log loss
+                wandb.log(dict(lr=sched.get_last_lr()[0]))
                 wandb.log(dict(epoch=epoch, **train_metrics["log"]), step=global_step)
 
                 # Save checkpoint
