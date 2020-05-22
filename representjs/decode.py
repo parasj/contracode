@@ -44,8 +44,7 @@ def beam_search_decode(model, X, sp: spm.SentencePieceProcessor, max_decode_len=
 
     with torch.no_grad():
         # initial Y_hat and batchwise score tensors
-        sequences = [(torch.zeros(B, max_decode_len).long().to(X.device) + bos_id,
-                      torch.zeros(B).to(X.device))]
+        sequences = [(torch.zeros(B, max_decode_len).long().to(X.device) + bos_id, torch.zeros(B).to(X.device))]
         # walk over each item in output sequence
         for t in range(max_decode_len - 1):
             all_candidates = []

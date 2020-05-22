@@ -20,9 +20,9 @@ def dl_cmds(dataset_path: str, extract=False):
             cmds.append("rsync -avhW --no-compress --progress {} {}".format(cache_path, local_path))
         else:
             cmds.append("wget -nc -O {} {}".format(local_path, remote_path))
-        if dataset_path.endswith('.tar.gz') and extract:
+        if dataset_path.endswith(".tar.gz") and extract:
             cmds.append("(cd {} && tar -xzf {})".format(local_path.parent, local_path))
-        elif dataset_path.endswith('.gz') and extract:
+        elif dataset_path.endswith(".gz") and extract:
             cmds.append("gunzip -d -k {}".format(local_path))
     return cmds
 

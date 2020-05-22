@@ -15,14 +15,14 @@ class F1MetricMethodName:
         self.tokenize_camel_case = tokenize_camel_case
         self.tokenize_snake_case = tokenize_snake_case
         self.eps = eps
-        self.camel_case_re = re.compile(r'.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
+        self.camel_case_re = re.compile(r".+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)")
 
     def camel_case_split(self, identifier):
         """from https://stackoverflow.com/questions/29916065/how-to-do-camelcase-split-in-python"""
         return [m.group(0) for m in self.camel_case_re.finditer(identifier)]
 
     def snake_case_split(self, identifier):
-        return identifier.split('_')
+        return identifier.split("_")
 
     def split_method_name(self, method_name: str):
         toks = [method_name]
@@ -35,6 +35,8 @@ class F1MetricMethodName:
     def count_tokens(self, token_list):
         count = Counter()
         for token in token_list:
+            if self.case_insensitive:
+                token = token.lower()
             if not (self.ignore_empty and len(token) == 0):
                 count[token] += 1
         return count
@@ -52,7 +54,7 @@ class F1MetricMethodName:
                 fp += 1
                 counts_pred[token] -= 1
         fn += sum(counts_target.values())
-        precision = tp / float(tp + fp) if (tp + fp) > 0 else 0.
-        recall = tp / float(tp + fn) if (tp + fn) > 0 else 0.
-        f1 = 2. * float(precision + recall) / float(precision + recall) if (precision + recall) > self.eps else 0
+        precision = tp / float(tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / float(tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2.0 * float(precision * recall) / float(precision + recall) if (precision + recall) > self.eps else 0
         return precision, recall, f1

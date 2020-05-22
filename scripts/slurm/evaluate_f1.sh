@@ -12,6 +12,8 @@ date;hostname;pwd
 free -mh
 
 [ -z "$CHECKPOINT" ] && { echo "Need to set CHECKPOINT"; exit 1; }
+export BATCHSIZE=${BATCHSIZE:-64}
+export NUMDECODERLAYERS=${NUMDECODERLAYERS:-4}
 
 export PATH="/data/paras/miniconda3/bin:$PATH"
 export DATA_CACHE="/data/paras/representjs_data"
@@ -39,7 +41,8 @@ pip install torch
 pip install -e .
 npm install
 
-python representjs/main.py test -batch_size 128 --num_workers 8 \
+python representjs/main.py test -batch_size $BATCHSIZE --num_workers 8 \
+  --n_decoder_layers $NUMDECODERLAYERS \
   --checkpoint_file $CHECKPOINT \
   --test_filepath $DATA_CACHE/codesearchnet_javascript/javascript_test_0.jsonl.gz \
   --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model
