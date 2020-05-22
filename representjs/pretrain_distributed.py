@@ -31,11 +31,14 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
     """ Create a schedule with a learning rate that decreases linearly after
     linearly increasing during a warmup period.
     """
+
     def lr_lambda(current_step):
         if current_step < num_warmup_steps:
             return float(current_step) / float(max(1, num_warmup_steps))
         return max(0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps)))
+
     return LambdaLR(optimizer, lr_lambda, last_epoch)
+
 
 def training_step(model, batch, use_cuda=False):
     imgs, _ = batch
@@ -126,7 +129,7 @@ def pretrain(
     #
     # Computational
     use_cuda: bool = True,
-    seed: int = 0
+    seed: int = 0,
 ):
     run_name = str(run_name)  # support numerical run ids
     slurm_job_id = os.environ.get("SLURM_JOB_ID")
