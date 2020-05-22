@@ -177,6 +177,8 @@ def train(
     # Model
     n_decoder_layers=4,
     resume_path: str = "",
+    resume_mode: str = "infonce",
+    resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
     # Optimization
     train_decoder_only: bool = False,
     num_epochs: int = 100,
@@ -252,43 +254,50 @@ def train(
 
     # Load checkpoint
     if resume_path:
+        logger.info(f"Resuming training from checkpoint {resume_path}, resume_mode={resume_mode}, resume_encoder_name={resume_encoder_name}")
+        assert resume_mode in ["infonce", "mlm"]
         checkpoint = torch.load(resume_path)
         pretrained_state_dict = checkpoint["model_state_dict"]
         encoder_state_dict = {}
+        if resume_mode == "infonce":
+            assert resume_encoder_name in ["encoder_k", "encoder_q"]
+        elif resume_mode == "mlm":
+            assert resume_encoder_name == "encoder"
+        
         for key, value in pretrained_state_dict.items():
-            if key.startswith('encoder_q.') and 'project_layer' not in key:
-                remapped_key = key[len('encoder_q.'):]
+            if key.startswith(resume_encoder_name + ".") and "project_layer" not in key:
+                remapped_key = key[len(resume_encoder_name + ".") :]
                 logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
                 encoder_state_dict[remapped_key] = value
         model.encoder.load_state_dict(encoder_state_dict)
         logger.info(f"Loaded state dict from {resume_path}")
 
-    # Set up optimizer
-    model = nn.DataParallel(model)
-    model = model.cuda() if use_cuda else model
-    wandb.watch(model, log="all")
-    params = model.module.decoder.parameters() if train_decoder_only else model.parameters()
-    optimizer = torch.optim.Adam(params, lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    #     optimizer,
-    #     lr,
-    #     epochs=num_epochs,
-    #     steps_per_epoch=len(train_loader),
-    #     pct_start=0.02,  # Warm up for 2% of the total training time
-    # )
+        # Set up optimizer
+        model = nn.DataParallel(model)
+        model = model.cuda() if use_cuda else model
+        wandb.watch(model, log="all")
+        params = model.module.decoder.parameters() if train_decoder_only else model.parameters()
+        optimizer = torch.optim.Adam(params, lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
+        # scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        #     optimizer,
+        #     lr,
+        #     epochs=num_epochs,
+        #     steps_per_epoch=len(train_loader),
+        #     pct_start=0.02,  # Warm up for 2% of the total training time
+        # )
 
-    global_step = 0
-    min_eval_loss = float("inf")
-    for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
-        logger.info(f"Starting epoch {epoch}\n")
-        if train_decoder_only:
-            model.module.encoder.eval()
-            model.module.decoder.train()
-        else:
-            model.train()
-        pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
-        for X, Y in pbar:
-            if use_cuda:
+        global_step = 0
+        min_eval_loss = float("inf")
+        for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
+            logger.info(f"Starting epoch {epoch}\n")
+            if train_decoder_only:
+                model.module.encoder.eval()
+                model.module.decoder.train()
+            else:
+                model.train()
+            pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
+            for X, Y in pbar:
+                if use_cuda:
                 X = X.cuda()
                 Y = Y.cuda()
             optimizer.zero_grad()
@@ -336,6 +345,7 @@ def train(
                 model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             logger.info(f"Saving checkpoint to {model_file}...")
             torch.save(checkpoint, str(model_file.resolve()))
+            wandb.save(str(model_file.resolve()))
             logger.info("Done.")
 
 
