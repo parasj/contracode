@@ -9,6 +9,7 @@ setup(
         # "apex @ git+https://github.com/NVIDIA/apex.git#egg=apex"  # apex does not encode dependency on torch
         "fire",
         "graphviz",
+        "jsbeautifier",
         "jsonlines",
         "matplotlib",
         "numpy",
