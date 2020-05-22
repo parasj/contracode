@@ -52,7 +52,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_
             # Compute average loss
             total_loss = 0
             num_examples = 0
-            pbar = tqdm.tqdm(loader, desc=f"evalaute")
+            pbar = tqdm.tqdm(loader, desc="evalaute")
             for X, Y in pbar:
                 if use_cuda:
                     X, Y = X.cuda(), Y.cuda()
@@ -83,7 +83,7 @@ def calculate_f1_metric(
     with Timer() as t:
         n_examples = 0
         precision, recall, f1 = 0.0, 0.0, 0.0
-        pbar = tqdm.tqdm(test_loader, desc=f"test")
+        pbar = tqdm.tqdm(test_loader, desc="test")
         for X, Y in pbar:
             if use_cuda:
                 X, Y = X.cuda(), Y.cuda()
@@ -332,7 +332,7 @@ def train(
             if eval_loss < min_eval_loss:
                 logger.info(f"New best evaluation loss: prev {min_eval_loss:.4f} > new {eval_loss:.4f}")
                 min_eval_loss = eval_loss
-                model_file = run_dir / f"ckpt_best.pth"
+                model_file = run_dir / "ckpt_best.pth"
             else:
                 model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             logger.info(f"Saving checkpoint to {model_file}...")
