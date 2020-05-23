@@ -254,7 +254,9 @@ def train(
 
     # Load checkpoint
     if resume_path:
-        logger.info(f"Resuming training from checkpoint {resume_path}, resume_mode={resume_mode}, resume_encoder_name={resume_encoder_name}")
+        logger.info(
+            f"Resuming training from checkpoint {resume_path}, resume_mode={resume_mode}, resume_encoder_name={resume_encoder_name}"
+        )
         assert resume_mode in ["infonce", "mlm"]
         checkpoint = torch.load(resume_path)
         pretrained_state_dict = checkpoint["model_state_dict"]
@@ -263,7 +265,7 @@ def train(
             assert resume_encoder_name in ["encoder_k", "encoder_q"]
         elif resume_mode == "mlm":
             assert resume_encoder_name == "encoder"
-        
+
         for key, value in pretrained_state_dict.items():
             if key.startswith(resume_encoder_name + ".") and "project_layer" not in key:
                 remapped_key = key[len(resume_encoder_name + ".") :]
@@ -298,8 +300,8 @@ def train(
             pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
             for X, Y in pbar:
                 if use_cuda:
-                X = X.cuda()
-                Y = Y.cuda()
+                    X = X.cuda()
+                    Y = Y.cuda()
             optimizer.zero_grad()
             # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
             logits = model(X, Y[:, :-1])

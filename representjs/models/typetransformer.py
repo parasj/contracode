@@ -7,15 +7,29 @@ from models.code_moco import CodeEncoder
 
 
 class TypeTransformer(nn.Module):
-    def __init__(self, n_tokens, n_output_tokens, d_model=512, d_rep=128, n_head=8, n_encoder_layers=6, d_ff=2048, dropout=0.1,
-                 activation="relu", norm=True, pad_id=None):
+    def __init__(
+        self,
+        n_tokens,
+        n_output_tokens,
+        d_model=512,
+        d_rep=128,
+        n_head=8,
+        n_encoder_layers=6,
+        d_ff=2048,
+        dropout=0.1,
+        activation="relu",
+        norm=True,
+        pad_id=None,
+    ):
         super(TypeTransformer, self).__init__()
         assert norm
         assert pad_id is not None
-        self.config = {k: v for k, v in locals().items() if k != 'self'}
+        self.config = {k: v for k, v in locals().items() if k != "self"}
 
         # Encoder
-        self.encoder = CodeEncoder(n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False)
+        self.encoder = CodeEncoder(
+            n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
+        )
 
         # Output for type prediction
         # TODO: Try LeakyReLU

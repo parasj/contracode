@@ -8,6 +8,8 @@ from representjs.data.util import normalize_program
 
 TYPED_MARKER_START = "__LS__"
 TYPED_MARKER_END = "__LE__"
+
+
 def _tokenize(deeptyper_line, sp, target_to_id, max_length, split_source_targets_by_tab=False):
     """Given a line from the .txt data files in DeepTyper, format and 
     tokenize the code into subwords while retaining a mapping between
@@ -27,7 +29,7 @@ def _tokenize(deeptyper_line, sp, target_to_id, max_length, split_source_targets
         # Code tokens and type labels are delimited by space after </s>, as in .txt files
         js_end = deeptyper_line.index("</s>") + len("</s>")
         js_tokens = deeptyper_line[:js_end]
-        labels = deeptyper_line[js_end+1:]
+        labels = deeptyper_line[js_end + 1 :]
 
     # Split code by spaces to get DeepTyper tokens, excluding <s>, </s>
     js_tokens = js_tokens.split(" ")[1:-1]
@@ -38,14 +40,14 @@ def _tokenize(deeptyper_line, sp, target_to_id, max_length, split_source_targets
     js_tokens_with_markers = []
     for tok, label in zip(js_tokens, labels):
         if label != "O":
-            tok = f"{TYPED_MARKER_START}{tok}{TYPED_MARKER_END}" 
+            tok = f"{TYPED_MARKER_START}{tok}{TYPED_MARKER_END}"
         js_tokens_with_markers.append(tok)
 
     # Normalize program by beautifying
     js_beautified = jsbeautifier.beautify(" ".join(js_tokens_with_markers))
     js_beautified_norm = normalize_program(js_beautified)
     js_beautified_norm = js_beautified_norm
-    
+
     # Subword tokenize, separately tokenizing each marked identifier
     js_buffer = js_beautified_norm
     subword_ids = [sp.PieceToId("<s>")]
@@ -58,7 +60,7 @@ def _tokenize(deeptyper_line, sp, target_to_id, max_length, split_source_targets
     if start < 0:
         # No labeled words in this text, just tokenize the full program
         buffer_ids = sp.EncodeAsIds(js_buffer)
-        subword_ids.extend(buffer_ids[:max_length-2])
+        subword_ids.extend(buffer_ids[: max_length - 2])
     while start >= 0:
         # buffer: "stuff [start ptr]__LS__typedIdentifier__LE__..."
         # Tokenize stuff before the typed identifier
@@ -82,7 +84,7 @@ def _tokenize(deeptyper_line, sp, target_to_id, max_length, split_source_targets
         start = js_buffer.find(TYPED_MARKER_START, start + 1)
         last_identifier_end = end + len(TYPED_MARKER_END)
         label_i += 1
-    
+
     subword_ids.append(sp.PieceToId("</s>"))
     assert subword_ids[0] == sp.PieceToId("<s>")
     assert subword_ids[-1] == sp.PieceToId("</s>")
@@ -107,8 +109,8 @@ def load_type_vocab(vocab_path):
 
 
 class DeepTyperDataset(torch.utils.data.Dataset):
-    def __init__(self, data_path, type_vocab_path, sentencepiece_filepath, max_length=1024, subword_regularization_alpha=0.):
-        assert subword_regularization_alpha == 0.
+    def __init__(self, data_path, type_vocab_path, sentencepiece_filepath, max_length=1024, subword_regularization_alpha=0.0):
+        assert subword_regularization_alpha == 0.0
         self.max_length = max_length
         self.subword_regularization_alpha = subword_regularization_alpha
 
@@ -121,7 +123,7 @@ class DeepTyperDataset(torch.utils.data.Dataset):
         with open(data_path, "r") as f:
             for line in f:
                 self.lines.append(line)
-        
+
     def __getitem__(self, idx):
         line = self.lines[idx]
         _, subword_ids, label_segments = _tokenize(line, self.sp, self.target_to_id, self.max_length)
@@ -134,5 +136,5 @@ class DeepTyperDataset(torch.utils.data.Dataset):
         return len(self.lines)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     pass

@@ -68,61 +68,53 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
                 # Pad logits and labels to the same sequence length so we can concatenate after the loop
                 logits_pad = torch.zeros(logits.size(0), pad_length, logits.size(2), dtype=torch.long)
                 logits_pad.fill_(pad_id)
-                logits_pad[:, :logits.size(1), :] = logits
+                logits_pad[:, : logits.size(1), :] = logits
                 labels_pad = torch.zeros(labels.size(0), pad_length, dtype=torch.long)
                 labels_pad.fill_(no_type_id)
-                labels_pad[:, :labels.size(1)] = labels
+                labels_pad[:, : labels.size(1)] = labels
                 all_logits.append(logits_pad.cpu())
                 all_labels.append(labels_pad.cpu())
 
             # Compute accuracy
             logits = torch.cat(all_logits, dim=0)
             labels = torch.cat(all_labels, dim=0)
-            acc1_any, acc5_any = accuracy(logits, labels, topk=(1,5), ignore_idx=(no_type_id,))
-            acc1, acc5 = accuracy(logits, labels, topk=(1,5), ignore_idx=(no_type_id,target_to_id["$any$"]))
+            acc1_any, acc5_any = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id,))
+            acc1, acc5 = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id, target_to_id["$any$"]))
 
         logger.debug(f"Loss calculation took {t.interval:.3f}s")
-        return acc1_any, {
-            "eval/loss": avg_loss,
-            "eval/acc@1": acc1,
-            "eval/acc@5": acc5,
-            "eval/acc@1_any": acc1_any,
-            "eval/acc@5_any": acc5_any
-        }
+        return (
+            acc1_any,
+            {"eval/loss": avg_loss, "eval/acc@1": acc1, "eval/acc@5": acc5, "eval/acc@1_any": acc1_any, "eval/acc@5_any": acc5_any},
+        )
 
 
 def train(
-        run_name: str,
-
-        # Data
-        train_filepath: str,
-        eval_filepath: str,
-        type_vocab_filepath: str,
-        spm_filepath: str,
-        num_workers=1,
-        max_seq_len=1024,
-        max_eval_seq_len=1024,
-
-        # Model
-        resume_path: str = "",
-        pretrain_resume_path: str = "",
-
-        # Optimization
-        num_epochs: int = 100,
-        save_every: int = 2,
-        batch_size: int = 256,
-        lr: float = 8e-4,
-        adam_beta1: float = 0.9,
-        adam_beta2: float = 0.98,
-        adam_eps: float = 1e-6,
-        weight_decay: float = 0,
-
-        # Loss
-        subword_regularization_alpha: float = 0,
-
-        # Computational
-        use_cuda: bool = True,
-        seed: int = 0
+    run_name: str,
+    # Data
+    train_filepath: str,
+    eval_filepath: str,
+    type_vocab_filepath: str,
+    spm_filepath: str,
+    num_workers=1,
+    max_seq_len=1024,
+    max_eval_seq_len=1024,
+    # Model
+    resume_path: str = "",
+    pretrain_resume_path: str = "",
+    # Optimization
+    num_epochs: int = 100,
+    save_every: int = 2,
+    batch_size: int = 256,
+    lr: float = 8e-4,
+    adam_beta1: float = 0.9,
+    adam_beta2: float = 0.98,
+    adam_eps: float = 1e-6,
+    weight_decay: float = 0,
+    # Loss
+    subword_regularization_alpha: float = 0,
+    # Computational
+    use_cuda: bool = True,
+    seed: int = 0,
 ):
     """Train model"""
     torch.manual_seed(seed)
@@ -162,28 +154,32 @@ def train(
         for i, y in enumerate(Y):
             for label_id, label_start, label_end in y:
                 labels[i, label_start] = label_id
-                output_attn[i, label_start, label_start:label_end] = 1. / (label_end - label_start)
+                output_attn[i, label_start, label_start:label_end] = 1.0 / (label_end - label_start)
         return X, output_attn, labels
 
     # Create training dataset and dataloader
     logger.info(f"Training data path {train_filepath}")
-    train_dataset = DeepTyperDataset(train_filepath, type_vocab_filepath, spm_filepath,
-        max_length=max_seq_len,
-        subword_regularization_alpha=subword_regularization_alpha)
+    train_dataset = DeepTyperDataset(
+        train_filepath, type_vocab_filepath, spm_filepath, max_length=max_seq_len, subword_regularization_alpha=subword_regularization_alpha
+    )
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers,
-        drop_last=True, collate_fn=collate_fn)
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True, collate_fn=collate_fn
+    )
 
     # Create eval dataset and dataloader
     logger.info(f"Eval data path {eval_filepath}")
-    eval_dataset = DeepTyperDataset(eval_filepath, type_vocab_filepath, spm_filepath,
+    eval_dataset = DeepTyperDataset(
+        eval_filepath,
+        type_vocab_filepath,
+        spm_filepath,
         max_length=max_eval_seq_len,
-        subword_regularization_alpha=subword_regularization_alpha)
+        subword_regularization_alpha=subword_regularization_alpha,
+    )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = torch.utils.data.DataLoader(
-        eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers,
-        collate_fn=collate_fn)
+        eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, collate_fn=collate_fn
+    )
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id)
@@ -194,12 +190,12 @@ def train(
         assert not resume_path
         logger.info(f"Loading pretrained parameters from {pretrain_resume_path}")
         checkpoint = torch.load(pretrain_resume_path)
-        pretrained_state_dict = checkpoint['model_state_dict']
+        pretrained_state_dict = checkpoint["model_state_dict"]
         encoder_state_dict = {}
         for key, value in pretrained_state_dict.items():
             # TODO: Try loading encoder_k -- has ema on parameters
-            if key.startswith('encoder_k.') and 'project_layer' not in key:
-                remapped_key = key[len('encoder_k.'):]
+            if key.startswith("encoder_k.") and "project_layer" not in key:
+                remapped_key = key[len("encoder_k.") :]
                 logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
                 encoder_state_dict[remapped_key] = value
         model.encoder.load_state_dict(encoder_state_dict)
@@ -212,7 +208,7 @@ def train(
     # Set up optimizer
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
-    wandb.watch(model, log='all')
+    wandb.watch(model, log="all")
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(adam_beta1, adam_beta2), eps=adam_eps, weight_decay=weight_decay)
     scheduler = get_linear_schedule_with_warmup(optimizer, 5000, 200000)
 
@@ -245,25 +241,30 @@ def train(
             scheduler.step()
 
             # Compute accuracy
-            acc1_any, acc5_any = accuracy(logits, labels, topk=(1,5), ignore_idx=(no_type_id,))
-            acc1, acc5 = accuracy(logits, labels, topk=(1,5), ignore_idx=(no_type_id,target_to_id["$any$"]))
+            acc1_any, acc5_any = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id,))
+            acc1, acc5 = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id, target_to_id["$any$"]))
 
             # Log loss
             global_step += 1
-            wandb.log({
-                "epoch": epoch,
-                "train/loss": loss.item(),
-                "train/acc@1": acc1,
-                "train/acc@5": acc5,
-                "train/acc@1_any": acc1_any,
-                "train/acc@5_any": acc5_any,
-                "lr": scheduler.get_last_lr()[0]
-            }, step=global_step)
+            wandb.log(
+                {
+                    "epoch": epoch,
+                    "train/loss": loss.item(),
+                    "train/acc@1": acc1,
+                    "train/acc@5": acc5,
+                    "train/acc@1_any": acc1_any,
+                    "train/acc@5_any": acc5_any,
+                    "lr": scheduler.get_last_lr()[0],
+                },
+                step=global_step,
+            )
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-        eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, pad_length=max_eval_seq_len)
+        eval_metric, eval_metrics = _evaluate(
+            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, pad_length=max_eval_seq_len
+        )
         for metric, value in eval_metrics.items():
             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
         eval_metrics["epoch"] = epoch
@@ -277,7 +278,7 @@ def train(
                 "epoch": epoch,
                 "global_step": global_step,
                 "config": config,
-                "eval_metric": eval_metric
+                "eval_metric": eval_metric,
             }
             if eval_metric < min_eval_metric:
                 logger.info(f"New best evaluation metric: prev {min_eval_metric:.4f} > new {eval_metric:.4f}")
@@ -291,6 +292,6 @@ def train(
 
 
 if __name__ == "__main__":
-    fire.Fire({
-        "train": train,
-    })
+    fire.Fire(
+        {"train": train,}
+    )
