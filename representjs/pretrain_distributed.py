@@ -15,7 +15,7 @@ import torch.multiprocessing as mp
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim.lr_scheduler import LambdaLR
 
-from models.code_mlm import CodeMLM
+from models.code_mlm import CodeMLM, CodeContrastiveMLM
 from representjs import RUN_DIR, CSNJS_DIR
 from data.precomputed_dataset import PrecomputedDataset
 from models.code_moco import CodeMoCo
@@ -101,6 +101,33 @@ def training_step_mlm(sp, model, batch, mask_id: int, pad_id: int, vocab_start_i
     }
 
 
+def training_step_hybrid(sp, model, batch, mask_id, pad_id, vocab_start_idx, vocab_end_idx, use_cuda):
+    imgs, _ = batch
+    imgs_k, imgs_q = imgs[:, 0, :], imgs[:, 1, :]
+    imgs_q, mlm_targets = mask_mlm(imgs_q, pad_id, mask_id, vocab_start_idx, vocab_end_idx)
+    if use_cuda:
+        imgs_k = imgs_k.cuda(non_blocking=True)
+        imgs_q = imgs_q.cuda(non_blocking=True)
+    predicted_masked_tokens, moco_logits, moco_targets = model(imgs_k, imgs_q)
+    moco_loss = F.cross_entropy(moco_logits, moco_targets)
+    moco_acc1, moco_acc5 = accuracy(moco_logits, moco_targets, topk=(1, 5))
+    mlm_loss = F.cross_entropy(predicted_masked_tokens.flatten(end_dim=1), mlm_targets.flatten(), ignore_index=pad_id)
+    mlm_acc1, mlm_acc5 = accuracy(predicted_masked_tokens[mlm_targets != pad_id], mlm_targets[mlm_targets != pad_id], topk=(1, 5))
+    loss = moco_loss + mlm_loss
+    logs = {
+        "pretrain/moco/loss": moco_loss.item(),
+        "pretrain/moco/acc@1": moco_acc1[0].item(),
+        "pretrain/moco/acc@5": moco_acc5[0].item(),
+        "pretrain/moco/queue_ptr": model.module.queue_ptr.item(),
+        "pretrain/mlm/loss": mlm_loss.item(),
+        "pretrain/mlm/acc@1": mlm_acc1[0].item(),
+        "pretrain/mlm/acc@5": mlm_acc5[0].item(),
+        "pretrain/hybrid_loss": loss
+    }
+    return {"loss": loss, "log": logs}
+
+
+
 def pretrain(
     run_name: str,
     #
@@ -112,7 +139,7 @@ def pretrain(
     # max_sequence_length=1024,
     subword_regularization_alpha: float = 0,
     program_mode="contrastive",
-    loss_mode="infonce",  # infonce or mlm
+    loss_mode="infonce",  # infonce, mlm, or hybrid
     min_alternatives=1,
     #
     # Optimization
@@ -141,8 +168,9 @@ def pretrain(
     logger.info(f"CUDA_DEVICE_ORDER = '{os.environ.get('CUDA_DEVICE_ORDER')}'")
 
     assert program_mode in ["contrastive", "identity", "augmentation"]
-    assert loss_mode == "infonce" or loss_mode == "mlm"
+    assert loss_mode == "infonce" or loss_mode == "mlm" or loss_mode == "hybrid"
     assert not (program_mode == "contrastive" and loss_mode == "mlm")
+    assert not (program_mode != "contrastive" and (loss_mode == "hybrid" or loss_mode == "infonce"))
     assert not use_cuda or torch.cuda.is_available()
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -166,7 +194,12 @@ def pretrain(
 def pretrain_worker(gpu, ngpus_per_node, config):
     chief_node = gpu == 0
     if chief_node:
-        project = "bert-pretrain" if config["loss_mode"] == "mlm" else "moco-pretrain"
+        if config["loss_mode"] == "mlm":
+            project = "bert-pretrain"
+        elif config["loss_mode"] == "infonce":
+            project = "moco-pretrain"
+        elif config["loss_mode"] == "hybrid":
+            project = "hybrid"
         wandb.init(name=config["run_name"], config=config, job_type="training", project=project, entity="ml4code")
 
     if gpu is not None:
@@ -212,6 +245,9 @@ def pretrain_worker(gpu, ngpus_per_node, config):
     elif config["loss_mode"] == "mlm":
         model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id)
         logger.info(f"Created CodeMLM model with {count_parameters(model)} params")
+    elif config["loss_mode"] == "hybrid":
+        model = CodeContrastiveMLM(sp.GetPieceSize(), pad_id=pad_id)
+        logger.info(f"Created CodeContrastiveMLM model with {count_parameters(model)} params")
     else:
         raise ValueError(f"Bad loss mode {config['loss_mode']}")
 
@@ -272,6 +308,10 @@ def pretrain_worker(gpu, ngpus_per_node, config):
                 # replace tokens randomly with tokens from _ (8)
                 train_metrics = training_step_mlm(
                     sp, model, batch, pad_id=pad_id, mask_id=mask_id, vocab_start_idx=8, vocab_end_idx=7999, use_cuda=config["use_cuda"]
+                )
+            elif config["loss_mode"] == "hybrid":
+                train_metrics = training_step_hybrid(sp, model, batch, mask_id=mask_id, pad_if=pad_id,
+                    vocab_start_idx=0, vocab_end_idx=7999, use_cuda=config["use_cuda"]
                 )
             else:
                 raise ValueError("Bad loss type")
