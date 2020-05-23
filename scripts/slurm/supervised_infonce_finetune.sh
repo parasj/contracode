@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name=contrastive_pretrain
-#SBATCH --output=/home/eecs/paras/slurm/coderep/%j_supervised_finetune.log
+#SBATCH --job-name=contrastive_finetune
+#SBATCH --output=~/slurm/coderep/%j_supervised_finetune_contrastive.log
 #SBATCH --ntasks=1
 #SBATCH --mem=256000
 #SBATCH --time=125:00:00
