@@ -48,10 +48,9 @@ class CodeEncoder(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_encoder_layers, norm=norm_fn)
         if project:
             self.project_layer = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
-
         # NOTE: We use the default PyTorch intialization, so no need to reset parameters.
 
-    def forward(self, x):
+    def forward(self, x, no_project_override=False):
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config["d_model"])
         src_emb = self.pos_encoder(src_emb)
         if self.config["pad_id"] is not None:
@@ -59,7 +58,7 @@ class CodeEncoder(nn.Module):
         else:
             src_key_padding_mask = None
         out = self.encoder(src_emb, src_key_padding_mask=src_key_padding_mask)  # TxBxD
-        if self.config["project"]:
+        if not no_project_override and self.config["project"]:
             return self.project_layer(out.mean(dim=0))
         else:
             return out

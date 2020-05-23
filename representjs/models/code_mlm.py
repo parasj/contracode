@@ -31,11 +31,12 @@ class CodeContrastiveMLM(CodeMoCo):
         self.mlm_head = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.LayerNorm(d_model))
 
     def mlm_forward(self, im):  # predicted masked tokens
-        features = self.encoder_q(im)  # L x B x D
+        features = self.encoder_q(im, no_project_override=True)  # L x B x D
+        assert len(features.shape) == 3, str(features.shape)
         L, B, D = features.shape
         assert D == self.d_model
-        features = self.head(features).view(L, B, D)  # L x B x D
-        logits = torch.matmul(features, self.encoder.embedding.weight.transpose(0, 1)).view(L, B, self.n_tokens)  # [L, B, ntok]
+        features = self.mlm_head(features).view(L, B, D)  # L x B x D
+        logits = torch.matmul(features, self.encoder_q.embedding.weight.transpose(0, 1)).view(L, B, self.n_tokens)  # [L, B, ntok]
         return torch.transpose(logits, 0, 1).view(B, L, self.n_tokens)  # [B, T, ntok]
 
     def moco_forward(self, im_q, im_k):  # logits, labels

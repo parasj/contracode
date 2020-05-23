@@ -108,6 +108,7 @@ def training_step_hybrid(sp, model, batch, mask_id, pad_id, vocab_start_idx, voc
     if use_cuda:
         imgs_k = imgs_k.cuda(non_blocking=True)
         imgs_q = imgs_q.cuda(non_blocking=True)
+        mlm_targets = mlm_targets.cuda(non_blocking=True)
     predicted_masked_tokens, moco_logits, moco_targets = model(imgs_k, imgs_q)
     moco_loss = F.cross_entropy(moco_logits, moco_targets)
     moco_acc1, moco_acc5 = accuracy(moco_logits, moco_targets, topk=(1, 5))
@@ -310,7 +311,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
                     sp, model, batch, pad_id=pad_id, mask_id=mask_id, vocab_start_idx=8, vocab_end_idx=7999, use_cuda=config["use_cuda"]
                 )
             elif config["loss_mode"] == "hybrid":
-                train_metrics = training_step_hybrid(sp, model, batch, mask_id=mask_id, pad_if=pad_id,
+                train_metrics = training_step_hybrid(sp, model, batch, mask_id=mask_id, pad_id=pad_id,
                     vocab_start_idx=0, vocab_end_idx=7999, use_cuda=config["use_cuda"]
                 )
             else:
