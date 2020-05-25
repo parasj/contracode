@@ -1,7 +1,8 @@
 import jsbeautifier
 from loguru import logger
-import torch
 import sentencepiece as spm
+import torch
+from torch.nn.utils.rnn import pad_sequence
 
 from representjs.data.util import normalize_program
 
@@ -21,10 +22,11 @@ def _tokenize(deeptyper_line, sp, target_to_id, max_length, split_source_targets
         List of (label_id, label_start, label_end) tuples where label_start/end specify a range of subword IDs"""
     assert TYPED_MARKER_START not in deeptyper_line
     assert TYPED_MARKER_END not in deeptyper_line
+    cap_length = max_length != -1
 
     if split_source_targets_by_tab:
         # Code tokens and type labels are delimeted by tab, as in .json files
-        js_tokens, labels = line.split("\t")
+        js_tokens, labels = deeptyper_line.split("\t")
     else:
         # Code tokens and type labels are delimited by space after </s>, as in .txt files
         js_end = deeptyper_line.index("</s>") + len("</s>")
@@ -60,12 +62,12 @@ def _tokenize(deeptyper_line, sp, target_to_id, max_length, split_source_targets
     if start < 0:
         # No labeled words in this text, just tokenize the full program
         buffer_ids = sp.EncodeAsIds(js_buffer)
-        subword_ids.extend(buffer_ids[: max_length - 2])
+        subword_ids.extend(buffer_ids[: max_length - 2] if cap_length else buffer_ids)
     while start >= 0:
         # buffer: "stuff [start ptr]__LS__typedIdentifier__LE__..."
         # Tokenize stuff before the typed identifier
         buffer_ids = sp.EncodeAsIds(js_buffer[last_identifier_end:start])
-        if len(subword_ids) + len(buffer_ids) + 1 > max_length:  # +1 for </s>
+        if cap_length and len(subword_ids) + len(buffer_ids) + 1 > max_length:  # +1 for </s>
             break
         subword_ids.extend(buffer_ids)
 
@@ -75,10 +77,11 @@ def _tokenize(deeptyper_line, sp, target_to_id, max_length, split_source_targets
         assert end > start, "Zero-length identifier"
         identifier = js_buffer[start:end]
         identifier_ids = sp.EncodeAsIds(identifier)
-        if len(subword_ids) + len(identifier_ids) + 1 > max_length:  # +1 for </s>
+        if cap_length and len(subword_ids) + len(identifier_ids) + 1 > max_length:  # +1 for </s>
             break
         # A segment is (label_id, label_start, label_end)
-        label_segments.append((target_to_id[labels[label_i]], len(subword_ids), len(subword_ids) + len(identifier_ids)))
+        label_id = target_to_id.get(labels[label_i], target_to_id["$any$"])
+        label_segments.append((label_id, len(subword_ids), len(subword_ids) + len(identifier_ids)))
         subword_ids.extend(identifier_ids)
 
         start = js_buffer.find(TYPED_MARKER_START, start + 1)
@@ -109,10 +112,11 @@ def load_type_vocab(vocab_path):
 
 
 class DeepTyperDataset(torch.utils.data.Dataset):
-    def __init__(self, data_path, type_vocab_path, sentencepiece_filepath, max_length=1024, subword_regularization_alpha=0.0):
+    def __init__(self, data_path, type_vocab_path, sentencepiece_filepath, max_length=1024, subword_regularization_alpha=0.0, split_source_targets_by_tab=False):
         assert subword_regularization_alpha == 0.0
         self.max_length = max_length
         self.subword_regularization_alpha = subword_regularization_alpha
+        self.split_source_targets_by_tab = split_source_targets_by_tab
 
         self.sp = spm.SentencePieceProcessor()
         self.sp.Load(sentencepiece_filepath)
@@ -122,12 +126,15 @@ class DeepTyperDataset(torch.utils.data.Dataset):
         self.lines = []
         with open(data_path, "r") as f:
             for line in f:
-                self.lines.append(line)
+                self.lines.append(line.rstrip())
 
     def __getitem__(self, idx):
         line = self.lines[idx]
-        _, subword_ids, label_segments = _tokenize(line, self.sp, self.target_to_id, self.max_length)
-        assert len(subword_ids) <= self.max_length
+        _, subword_ids, label_segments = _tokenize(
+            line, self.sp, self.target_to_id, self.max_length,
+            split_source_targets_by_tab=self.split_source_targets_by_tab)
+        if self.max_length != -1:
+            assert len(subword_ids) <= self.max_length
         subword_ids = torch.tensor(subword_ids, dtype=torch.long)
         label_segments = torch.tensor(label_segments, dtype=torch.long)
         return (subword_ids, label_segments)
@@ -136,5 +143,38 @@ class DeepTyperDataset(torch.utils.data.Dataset):
         return len(self.lines)
 
 
+def get_collate_fn(pad_id, no_type_id):
+    def collate_fn(batch):
+        """Batch is a list of tuples (x, y)"""
+        B = len(batch)
+        X, Y = zip(*batch)
+        X = pad_sequence(X, batch_first=True, padding_value=pad_id)
+        L = X.size(1)
+
+        # Make masks for each label interval
+        labels = torch.zeros(B, L, dtype=torch.long)
+        labels.fill_(no_type_id)
+        output_attn = torch.zeros(B, L, L, dtype=torch.float)
+        for i, y in enumerate(Y):
+            for label_id, label_start, label_end in y:
+                labels[i, label_start] = label_id
+                output_attn[i, label_start, label_start:label_end] = 1.0 / (label_end - label_start)
+        return X, output_attn, labels
+
+    return collate_fn
+
+
 if __name__ == "__main__":
-    pass
+    # "../DeepTyper/data/test-outputs-gold.json",
+    dataset = DeepTyperDataset(
+        "/home/ajay/coderep/DeepTyper/data/test_projects_gold_filtered.json",
+        "../DeepTyper/data/target_wl",
+        "data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
+        max_length=-1,
+        split_source_targets_by_tab=True
+    )
+    max_ids, max_labels = 0, 0
+    for i, (subword_ids, label_segments) in enumerate(dataset):
+        max_ids = max(len(subword_ids), max_ids)
+        max_labels = max(len(label_segments), max_labels)
+        print(f"Dataset {i} max_ids {max_ids}, max_labels {max_labels}")

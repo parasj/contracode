@@ -7,7 +7,7 @@ from torch import nn
 class PositionalEncoding(nn.Module):
     """From https://pytorch.org/tutorials/beginner/transformer_tutorial.html"""
 
-    def __init__(self, d_model, dropout=0.1, max_len=5000):
+    def __init__(self, d_model, dropout=0.1, max_len=9000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -22,6 +22,9 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         x = x + self.pe[: x.size(0), :]
         return self.dropout(x)
+
+    def _load_from_state_dict(self, *args):
+        print("PositionalEncoding: doing nothing on call to _load_from_state_dict")
 
 
 class CodeEncoder(nn.Module):
@@ -42,7 +45,7 @@ class CodeEncoder(nn.Module):
         super().__init__()
         self.config = {k: v for k, v in locals().items() if k != "self"}
         self.embedding = nn.Embedding(n_tokens, d_model)
-        self.pos_encoder = PositionalEncoding(d_model, dropout, max_len=2048)
+        self.pos_encoder = PositionalEncoding(d_model, dropout, max_len=9000)
         norm_fn = nn.LayerNorm(d_model) if norm else None
         encoder_layer = nn.TransformerEncoderLayer(d_model, n_head, d_ff, dropout, activation)
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=n_encoder_layers, norm=norm_fn)
