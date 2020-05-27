@@ -293,7 +293,8 @@ def train(
 def concatenate_files_in_list(
     project_list="../DeepTyper/data/test_projects.txt",
     project_dir="../DeepTyper/data/outputs-gold",
-    output_file="../DeepTyper/data/test-outputs-gold.json"):
+    output_file="../DeepTyper/data/test-outputs-gold.json",
+):
     # Find json files
     json_paths = []
     with open(project_list, "r") as list_f:
@@ -317,7 +318,4 @@ def concatenate_files_in_list(
 
 
 if __name__ == "__main__":
-    fire.Fire({
-        "train": train,
-        "concat": concatenate_files_in_list
-    })
+    fire.Fire({"train": train, "concat": concatenate_files_in_list})

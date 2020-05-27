@@ -19,6 +19,7 @@ from models.transformer import TransformerModel
 from representjs import RUN_DIR
 from utils import count_parameters
 from decode import ids_to_strs, beam_search_decode
+from pretrain_distributed import get_linear_schedule_with_warmup
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
@@ -177,7 +178,6 @@ def train(
     # Model
     n_decoder_layers=4,
     resume_path: str = "",
-    resume_mode: str = "infonce",
     resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
     # Optimization
     train_decoder_only: bool = False,
@@ -254,17 +254,11 @@ def train(
 
     # Load checkpoint
     if resume_path:
-        logger.info(
-            f"Resuming training from checkpoint {resume_path}, resume_mode={resume_mode}, resume_encoder_name={resume_encoder_name}"
-        )
-        assert resume_mode in ["infonce", "mlm"]
+        logger.info(f"Resuming training from checkpoint {resume_path}, resume_encoder_name={resume_encoder_name}")
         checkpoint = torch.load(resume_path)
         pretrained_state_dict = checkpoint["model_state_dict"]
         encoder_state_dict = {}
-        if resume_mode == "infonce":
-            assert resume_encoder_name in ["encoder_k", "encoder_q"]
-        elif resume_mode == "mlm":
-            assert resume_encoder_name == "encoder"
+        assert resume_encoder_name in ["encoder_k", "encoder_q", "encoder"]
 
         for key, value in pretrained_state_dict.items():
             if key.startswith(resume_encoder_name + ".") and "project_layer" not in key:
@@ -280,13 +274,7 @@ def train(
         wandb.watch(model, log="all")
         params = model.module.decoder.parameters() if train_decoder_only else model.parameters()
         optimizer = torch.optim.Adam(params, lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
-        # scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        #     optimizer,
-        #     lr,
-        #     epochs=num_epochs,
-        #     steps_per_epoch=len(train_loader),
-        #     pct_start=0.02,  # Warm up for 2% of the total training time
-        # )
+        scheduler = get_linear_schedule_with_warmup(optimizer, 5000, 600000)
 
         global_step = 0
         min_eval_loss = float("inf")
@@ -302,25 +290,20 @@ def train(
                 if use_cuda:
                     X = X.cuda()
                     Y = Y.cuda()
-            optimizer.zero_grad()
-            # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
-            logits = model(X, Y[:, :-1])
-            loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
-            loss.backward()
-            optimizer.step()
-            # scheduler.step()
+                optimizer.zero_grad()
+                # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
+                logits = model(X, Y[:, :-1])
+                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
+                loss.backward()
+                optimizer.step()
+                scheduler.step()
 
-            # Log loss
-            global_step += 1
-            wandb.log(
-                {
-                    "epoch": epoch,
-                    f"label-{label_mode}/train_loss": loss.item(),
-                    # "lr": scheduler.get_lr()
-                },
-                step=global_step,
-            )
-            pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
+                # Log loss
+                global_step += 1
+                wandb.log(
+                    {"epoch": epoch, f"label-{label_mode}/train_loss": loss.item(), "lr": scheduler.get_last_lr()[0]}, step=global_step
+                )
+                pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
