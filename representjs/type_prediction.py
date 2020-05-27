@@ -24,7 +24,13 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
         maxk = max(topk)
         batch_size = target.size(0)
 
-        _, pred = output.topk(maxk, 2, True, True)  # BxLx5
+        # Get top predictions per position that are not in ignore_idx
+        target_vocab_size = output.size(2)
+        keep_idx = torch.tensor([i for i in range(target_vocab_size) if i not in ignore_idx], device=output.device).long()
+        _, pred = output[:, :, keep_idx].topk(maxk, 2, True, True)  # BxLx5
+        pred = keep_idx[pred]  # BxLx5
+
+        # Compute statistics over positions not labeled with an ignored idx
         correct = pred.eq(target.unsqueeze(-1).expand_as(pred)).long()
         mask = torch.ones_like(target).long()
         for idx in ignore_idx:
@@ -125,6 +131,7 @@ def train(
     weight_decay: float = 0,
     # Loss
     subword_regularization_alpha: float = 0,
+    ignore_any_loss: bool=False,
     # Computational
     use_cuda: bool = True,
     seed: int = 0,
@@ -152,6 +159,7 @@ def train(
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
     assert no_type_id == 0  # Just a sense check since O is the first line in the vocab file
+    any_id = target_to_id["$any$"]
 
     collate_fn = get_collate_fn(pad_id, no_type_id)
 
@@ -235,7 +243,13 @@ def train(
                 labels = labels.cuda()
             optimizer.zero_grad()
             logits = model(X, output_attn)  # BxLxVocab
-            loss = F.cross_entropy(logits.transpose(1, 2), labels, ignore_index=no_type_id)
+            if ignore_any_loss:
+                # Don't train with $any$ type
+                labels_ignore_any = labels.clone()
+                labels_ignore_any[labels_ignore_any == any_id] = no_type_id
+                loss = F.cross_entropy(logits.transpose(1, 2), labels_ignore_any, ignore_index=no_type_id)
+            else:
+                loss = F.cross_entropy(logits.transpose(1, 2), labels, ignore_index=no_type_id)
             loss.backward()
             optimizer.step()
             scheduler.step()
