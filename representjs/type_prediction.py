@@ -134,7 +134,7 @@ def train(
     ignore_any_loss: bool=False,
     # Computational
     use_cuda: bool = True,
-    seed: int = 0,
+    seed: int = 1,
 ):
     """Train model"""
     torch.manual_seed(seed)
@@ -256,8 +256,8 @@ def train(
 
             # Compute accuracy in training batch
             (corr1_any, corr5_any), num_labels_any = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id,))
-            acc1_any, acc5_any = corr1_any / num_labels * 100, corr5_any / num_labels * 100
-            (corr1, corr5), num_labels = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id, target_to_id["$any$"]))
+            acc1_any, acc5_any = corr1_any / num_labels_any * 100, corr5_any / num_labels_any * 100
+            (corr1, corr5), num_labels = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id, any_id))
             acc1, acc5 = corr1 / num_labels * 100, corr5 / num_labels * 100
 
             # Log loss
