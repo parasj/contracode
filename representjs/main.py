@@ -7,6 +7,7 @@ import sentencepiece as spm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import LambdaLR
 import tqdm
 import wandb
 from loguru import logger
@@ -187,10 +188,12 @@ def train(
     lr: float = 8e-4,
     adam_beta1: float = 0.9,
     adam_beta2: float = 0.98,
+    use_lr_warmup: bool = True,
     # Loss
     subword_regularization_alpha: float = 0,
     # Computational
     use_cuda: bool = True,
+    auto_test: bool = True,
     seed: int = 0,
 ):
     """Train model"""
@@ -204,7 +207,7 @@ def train(
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
     config = locals()
     logger.info(f"Config: {config}")
-    wandb.init(name=run_name, config=config, job_type="training", project="code-representation", entity="ml4code")
+    wandb.init(name=run_name, config=config, job_type="training", project="identifier-prediction", entity="ml4code")
 
     if use_cuda:
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
@@ -268,42 +271,45 @@ def train(
         model.encoder.load_state_dict(encoder_state_dict)
         logger.info(f"Loaded state dict from {resume_path}")
 
-        # Set up optimizer
-        model = nn.DataParallel(model)
-        model = model.cuda() if use_cuda else model
-        wandb.watch(model, log="all")
-        params = model.module.decoder.parameters() if train_decoder_only else model.parameters()
-        optimizer = torch.optim.Adam(params, lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
+    # Set up optimizer
+    model = nn.DataParallel(model)
+    model = model.cuda() if use_cuda else model
+    wandb.watch(model, log="all")
+    params = model.module.decoder.parameters() if train_decoder_only else model.parameters()
+    optimizer = torch.optim.Adam(params, lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
+    if use_lr_warmup:
         scheduler = get_linear_schedule_with_warmup(optimizer, 5000, 600000)
+    else:
+        scheduler = LambdaLR(optimizer, lr_lambda=lambda x: 1.0)
 
-        global_step = 0
-        min_eval_loss = float("inf")
-        for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
-            logger.info(f"Starting epoch {epoch}\n")
-            if train_decoder_only:
-                model.module.encoder.eval()
-                model.module.decoder.train()
-            else:
-                model.train()
-            pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
-            for X, Y in pbar:
-                if use_cuda:
-                    X = X.cuda()
-                    Y = Y.cuda()
-                optimizer.zero_grad()
-                # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
-                logits = model(X, Y[:, :-1])
-                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
-                loss.backward()
-                optimizer.step()
-                scheduler.step()
+    global_step = 0
+    min_eval_loss = float("inf")
+    for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
+        logger.info(f"Starting epoch {epoch}\n")
+        if train_decoder_only:
+            model.module.encoder.eval()
+            model.module.decoder.train()
+        else:
+            model.train()
+        pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
+        for X, Y in pbar:
+            if use_cuda:
+                X = X.cuda()
+                Y = Y.cuda()
+            optimizer.zero_grad()
+            # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
+            logits = model(X, Y[:, :-1])
+            loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
 
-                # Log loss
-                global_step += 1
-                wandb.log(
-                    {"epoch": epoch, f"label-{label_mode}/train_loss": loss.item(), "lr": scheduler.get_last_lr()[0]}, step=global_step
-                )
-                pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
+            # Log loss
+            global_step += 1
+            wandb.log(
+                {"epoch": epoch, f"label-{label_mode}/train_loss": loss.item(), "lr": scheduler.get_last_lr()[0]}, step=global_step
+            )
+            pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
@@ -332,6 +338,19 @@ def train(
             torch.save(checkpoint, str(model_file.resolve()))
             wandb.save(str(model_file.resolve()))
             logger.info("Done.")
+
+    if auto_test:
+        best_ckpt = run_dir / "ckpt_best.pth"
+        test(
+            str(best_ckpt.resolve()),
+            CSNJS_TEST_FILEPATH,
+            spm_filepath,
+            program_mode,
+            label_mode,
+            num_workers,
+            -1,
+            n_decoder_layers=n_decoder_layers,
+        )
 
 
 if __name__ == "__main__":
