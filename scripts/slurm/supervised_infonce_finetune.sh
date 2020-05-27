@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=contrastive_finetune
-#SBATCH --output=~/slurm/coderep/%j_supervised_finetune_contrastive.log
+#SBATCH --output=/home/eecs/paras/slurm/coderep/%j_supervised_finetune_contrastive.log
 #SBATCH --ntasks=1
 #SBATCH --mem=256000
 #SBATCH --time=125:00:00
@@ -78,5 +78,4 @@ python representjs/main.py train --run_name "$RUNNAME-$SLURM_JOB_ID" \
   --train_filepath $DATA_CACHE/codesearchnet_javascript/javascript_train_supervised.jsonl.gz \
   --eval_filepath $DATA_CACHE/codesearchnet_javascript/javascript_valid_0.jsonl.gz \
   --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
-  --resume_path "$CKPT" --resume_mode infonce --resume_encoder_name $RESUME_ENCODER_NAME \
-  --limit_dataset_size $DATASET_LIMIT
+  --resume_path "$CKPT" --resume_encoder_name $RESUME_ENCODER_NAME --limit_dataset_size $DATASET_LIMIT

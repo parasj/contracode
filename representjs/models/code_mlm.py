@@ -41,7 +41,7 @@ class CodeContrastiveMLM(CodeMoCo):
 
     def moco_forward(self, im_q, im_k):  # logits, labels
         return super().forward(im_q, im_k)
-    
+
     def forward(self, im_q, im_k):
         predicted_masked_tokens = self.mlm_forward(im_q)
         moco_logits, moco_targets = self.moco_forward(im_q, im_k)

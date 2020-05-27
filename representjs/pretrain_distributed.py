@@ -24,11 +24,11 @@ from utils import accuracy, count_parameters
 DEFAULT_CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 DEFAULT_SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
 
-"""from https://huggingface.co/transformers/_modules/transformers/optimization.html"""
-
 
 def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
-    """ Create a schedule with a learning rate that decreases linearly after
+    """
+    from https://huggingface.co/transformers/_modules/transformers/optimization.html
+    Create a schedule with a learning rate that decreases linearly after
     linearly increasing during a warmup period.
     """
 
@@ -114,7 +114,7 @@ def training_step_hybrid(sp, model, batch, mask_id, pad_id, vocab_start_idx, voc
     moco_acc1, moco_acc5 = accuracy(moco_logits, moco_targets, topk=(1, 5))
     mlm_loss = F.cross_entropy(predicted_masked_tokens.flatten(end_dim=1), mlm_targets.flatten(), ignore_index=pad_id)
     mlm_acc1, mlm_acc5 = accuracy(predicted_masked_tokens[mlm_targets != pad_id], mlm_targets[mlm_targets != pad_id], topk=(1, 5))
-    loss = moco_loss + mlm_loss
+    loss = 4 * moco_loss + mlm_loss
     logs = {
         "pretrain/moco/loss": moco_loss.item(),
         "pretrain/moco/acc@1": moco_acc1[0].item(),
@@ -123,10 +123,9 @@ def training_step_hybrid(sp, model, batch, mask_id, pad_id, vocab_start_idx, voc
         "pretrain/mlm/loss": mlm_loss.item(),
         "pretrain/mlm/acc@1": mlm_acc1[0].item(),
         "pretrain/mlm/acc@5": mlm_acc5[0].item(),
-        "pretrain/hybrid_loss": loss
+        "pretrain/hybrid_loss": loss,
     }
     return {"loss": loss, "log": logs}
-
 
 
 def pretrain(
@@ -311,8 +310,8 @@ def pretrain_worker(gpu, ngpus_per_node, config):
                     sp, model, batch, pad_id=pad_id, mask_id=mask_id, vocab_start_idx=8, vocab_end_idx=7999, use_cuda=config["use_cuda"]
                 )
             elif config["loss_mode"] == "hybrid":
-                train_metrics = training_step_hybrid(sp, model, batch, mask_id=mask_id, pad_id=pad_id,
-                    vocab_start_idx=0, vocab_end_idx=7999, use_cuda=config["use_cuda"]
+                train_metrics = training_step_hybrid(
+                    sp, model, batch, mask_id=mask_id, pad_id=pad_id, vocab_start_idx=0, vocab_end_idx=7999, use_cuda=config["use_cuda"]
                 )
             else:
                 raise ValueError("Bad loss type")
