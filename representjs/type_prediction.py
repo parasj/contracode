@@ -254,9 +254,11 @@ def train(
             optimizer.step()
             scheduler.step()
 
-            # Compute accuracy
-            (acc1_any, acc5_any), _ = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id,))
-            (acc1, acc5), _ = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id, target_to_id["$any$"]))
+            # Compute accuracy in training batch
+            (corr1_any, corr5_any), num_labels_any = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id,))
+            acc1_any, acc5_any = corr1_any / num_labels * 100, corr5_any / num_labels * 100
+            (corr1, corr5), num_labels = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id, target_to_id["$any$"]))
+            acc1, acc5 = corr1 / num_labels * 100, corr5 / num_labels * 100
 
             # Log loss
             global_step += 1
