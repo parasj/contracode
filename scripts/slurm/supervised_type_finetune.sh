@@ -28,7 +28,7 @@ export BATCHSIZE=${BATCHSIZE:-16}
 export LR=${LR:-"1e-4"}
 export SUBWORD_REGULARIZATION=${SUBWORD_REGULARIZATION:-0}
 export RESUME_ENCODER_NAME=${RESUME_ENCODER_NAME:-"encoder_q"}
-export MAXSEQLEN=${MAXSEQLEN:2048}
+export MAXSEQLEN=${MAXSEQLEN:-2048}
 
 # set default arugments
 [ -z "$RUNNAME" ] && { echo "Need to set RUNNAME"; exit 1; }

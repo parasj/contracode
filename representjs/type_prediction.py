@@ -93,7 +93,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
 
         logger.debug(f"Loss calculation took {t.interval:.3f}s")
         return (
-            acc1_any,
+            -acc1_any,
             {
                 "eval/loss": avg_loss,
                 "eval/acc@1": acc1,
@@ -371,18 +371,20 @@ def eval(
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
 
-    # Load checkpoint
-    logger.info(f"Loading parameters from {resume_path}")
-    checkpoint = torch.load(resume_path)
-    model.module.load_state_dict(checkpoint["model_state_dict"])
-    epoch = checkpoint["epoch"]
-    global_step = checkpoint["global_step"]
+    model.eval()
+    with torch.no_grad():
+        # Load checkpoint
+        logger.info(f"Loading parameters from {resume_path}")
+        checkpoint = torch.load(resume_path)
+        model.module.load_state_dict(checkpoint["model_state_dict"])
+        epoch = checkpoint["epoch"]
+        global_step = checkpoint["global_step"]
 
-    # Evaluate metrics
-    logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-    _, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda)
-    for metric, value in eval_metrics.items():
-        logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
+        # Evaluate metrics
+        logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
+        _, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda)
+        for metric, value in eval_metrics.items():
+            logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
 
 
 def concatenate_files_in_list(
