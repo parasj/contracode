@@ -16,13 +16,11 @@ from data.util import Timer
 from models.typetransformer import TypeTransformer
 from representjs import RUN_DIR
 from utils import count_parameters, get_linear_schedule_with_warmup
-from decode import ids_to_strs
 
 
 def accuracy(output, target, topk=(1,), ignore_idx=[]):
     with torch.no_grad():
         maxk = max(topk)
-        batch_size = target.size(0)
 
         # Get top predictions per position that are not in ignore_idx
         target_vocab_size = output.size(2)
@@ -48,7 +46,6 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
 
 def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_cuda=True):
     model.eval()
-    pad_id = sp.PieceToId("[PAD]")
     no_type_id = target_to_id["O"]
     any_id = target_to_id["$any$"]
 
@@ -122,6 +119,7 @@ def train(
     # Model
     resume_path: str = "",
     pretrain_resume_path: str = "",
+    pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
     # Optimization
     num_epochs: int = 100,
     save_every: int = 2,
@@ -194,6 +192,23 @@ def train(
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id)
     logger.info(f"Created TypeTransformer with {count_parameters(model)} params")
 
+    # Load pretrained checkpoint
+    if pretrain_resume_path:
+        assert not resume_path
+        logger.info(f"Resuming training from pretraining checkpoint {pretrain_resume_path}, pretrain_resume_encoder_name={pretrain_resume_encoder_name}")
+        checkpoint = torch.load(pretrain_resume_path)
+        pretrained_state_dict = checkpoint["model_state_dict"]
+        encoder_state_dict = {}
+        assert pretrain_resume_encoder_name in ["encoder_k", "encoder_q", "encoder"]
+
+        for key, value in pretrained_state_dict.items():
+            if key.startswith(pretrain_resume_encoder_name + ".") and "project_layer" not in key:
+                remapped_key = key[len(pretrain_resume_encoder_name + ".") :]
+                logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
+                encoder_state_dict[remapped_key] = value
+        model.encoder.load_state_dict(encoder_state_dict)
+        logger.info(f"Loaded state dict from {pretrain_resume_path}")
+
     # Set up optimizer
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
@@ -204,22 +219,9 @@ def train(
     global_step = 0
     min_eval_metric = float("inf")
 
-    # Load pretrained checkpoint
-    if pretrain_resume_path:
-        assert not resume_path
-        logger.info(f"Loading pretrained parameters from {pretrain_resume_path}")
-        checkpoint = torch.load(pretrain_resume_path)
-        pretrained_state_dict = checkpoint["model_state_dict"]
-        encoder_state_dict = {}
-        for key, value in pretrained_state_dict.items():
-            if key.startswith("encoder_q.") and "project_layer" not in key:
-                remapped_key = key[len("encoder_q.") :]
-                logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
-                encoder_state_dict[remapped_key] = value
-        model.module.encoder.load_state_dict(encoder_state_dict)
-        logger.info(f"Loaded state dict from {pretrain_resume_path}")
-    elif resume_path:
-        logger.info(f"Loading parameters from {resume_path}")
+    if resume_path:
+        assert not pretrain_resume_path
+        logger.info(f"Resuming training from checkpoint {resume_path}")
         checkpoint = torch.load(resume_path)
         model.module.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -378,7 +380,7 @@ def eval(
 
     # Evaluate metrics
     logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda)
+    _, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda)
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
 
