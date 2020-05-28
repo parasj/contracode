@@ -269,7 +269,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # define optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=0)
-    sched = get_linear_schedule_with_warmup(optimizer, 5000, 200000)
+    sched = get_linear_schedule_with_warmup(optimizer, 5000, 600000)
 
     # Setup data
     train_dataset = PrecomputedDataset(

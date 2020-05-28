@@ -182,7 +182,7 @@ def train(
     resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
     # Optimization
     train_decoder_only: bool = False,
-    num_epochs: int = 100,
+    num_epochs: int = 50,
     save_every: int = 2,
     batch_size: int = 256,
     lr: float = 8e-4,
@@ -278,7 +278,7 @@ def train(
     params = model.module.decoder.parameters() if train_decoder_only else model.parameters()
     optimizer = torch.optim.Adam(params, lr=lr, betas=(adam_beta1, adam_beta2), eps=1e-9)
     if use_lr_warmup:
-        scheduler = get_linear_schedule_with_warmup(optimizer, 5000, 600000)
+        scheduler = get_linear_schedule_with_warmup(optimizer, 5000, len(train_loader) * num_epochs)
     else:
         scheduler = LambdaLR(optimizer, lr_lambda=lambda x: 1.0)
 
