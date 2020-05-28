@@ -120,6 +120,7 @@ def train(
     resume_path: str = "",
     pretrain_resume_path: str = "",
     pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
+    encoder_type: str = "transformer",
     # Optimization
     num_epochs: int = 100,
     save_every: int = 2,
@@ -189,8 +190,8 @@ def train(
     )
 
     # Create model
-    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id)
-    logger.info(f"Created TypeTransformer with {count_parameters(model)} params")
+    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id, encoder_type=encoder_type)
+    logger.info(f"Created TypeTransformer " + encoder_type + " with {count_parameters(model)} params")
 
     # Load pretrained checkpoint
     if pretrain_resume_path:
@@ -328,6 +329,7 @@ def eval(
     # Computational
     use_cuda: bool = True,
     seed: int = 0,
+    encoder_type: str = "transformer"
 ):
     """Train model"""
     torch.manual_seed(seed)
@@ -366,8 +368,8 @@ def eval(
     )
 
     # Create model
-    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id)
-    logger.info(f"Created TypeTransformer with {count_parameters(model)} params")
+    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id, encoder_type=encoder_type)
+    logger.info(f"Created TypeTransformer " + encoder_type + " with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
 

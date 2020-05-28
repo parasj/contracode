@@ -65,3 +65,46 @@ class CodeEncoder(nn.Module):
             return self.project_layer(out.mean(dim=0))
         else:
             return out
+
+class CodeEncoderLSTM(nn.Module):
+    def __init__(
+        self,
+        n_tokens,
+        #Deeptype set this to 200
+        d_model=512,
+        d_rep=256,
+        n_head=8,
+        n_encoder_layers=2,
+        d_ff=2048,
+        dropout=0.1,
+        activation="relu",
+        norm=True,
+        pad_id=None,
+        project=False,
+    ):
+        super().__init__()
+        self.config = {k: v for k, v in locals().items() if k != "self"}
+        self.embedding = nn.Embedding(n_tokens, d_model)
+        self.pos_encoder = PositionalEncoding(d_model, dropout, max_len=9000)
+        norm_fn = nn.LayerNorm(d_model) if norm else None
+
+        #Currently using 2 layers of LSTM
+        self.encoder = nn.LSTM(input_size=self.d_model, hidden_size=self.d_model, num_layers=n_encoder_layers, bidirectional=True)
+
+        if project:
+            self.project_layer = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
+        # NOTE: We use the default PyTorch intialization, so no need to reset parameters.
+
+    def forward(self, x, no_project_override=False):
+        src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config["d_model"])
+        src_emb = self.pos_encoder(src_emb)
+        if self.config["pad_id"] is not None:
+            src_key_padding_mask = x == self.config["pad_id"]
+        else:
+            src_key_padding_mask = None
+        #TODO: figure out padding mask; maybe should do random initialization 
+        out, _ = self.encoder(src_emb)  # TxBxD
+        if not no_project_override and self.config["project"]:
+            return self.project_layer(out.mean(dim=0))
+        else:
+            return out
