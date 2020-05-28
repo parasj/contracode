@@ -158,7 +158,8 @@ def get_collate_fn(pad_id, no_type_id):
         for i, y in enumerate(Y):
             for label_id, label_start, label_end in y:
                 labels[i, label_start] = label_id
-                output_attn[i, label_start, label_start:label_end] = 1.0 / (label_end - label_start)
+                output_attn[i, label_start, label_start:label_end] = 1.0 / (label_end.item() - label_start.item())
+
         return X, output_attn, labels
 
     return collate_fn

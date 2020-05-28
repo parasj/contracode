@@ -42,6 +42,7 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
         for k in topk:
             correct_k = correct[..., :k].view(-1).float().sum(0)
             res.append(correct_k.item())
+
         return res, deno
 
 
@@ -49,6 +50,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
     model.eval()
     pad_id = sp.PieceToId("[PAD]")
     no_type_id = target_to_id["O"]
+    any_id = target_to_id["$any$"]
 
     with torch.no_grad():
         # Accumulate metrics across batches to compute label-wise accuracy
@@ -79,7 +81,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
                 num_labels_any_total += num_labels_any
 
                 (corr1, corr5), num_labels = accuracy(
-                    logits.cpu(), labels.cpu(), topk=(1, 5), ignore_idx=(no_type_id, target_to_id["$any$"]))
+                    logits.cpu(), labels.cpu(), topk=(1, 5), ignore_idx=(no_type_id, any_id))
                 num1 += corr1
                 num5 += corr5
                 num_labels_total += num_labels
@@ -131,7 +133,7 @@ def train(
     weight_decay: float = 0,
     # Loss
     subword_regularization_alpha: float = 0,
-    ignore_any_loss: bool=False,
+    ignore_any_loss: bool = False,
     # Computational
     use_cuda: bool = True,
     seed: int = 1,
@@ -181,6 +183,7 @@ def train(
         spm_filepath,
         max_length=max_eval_seq_len,
         subword_regularization_alpha=subword_regularization_alpha,
+        split_source_targets_by_tab=eval_filepath.endswith(".json")
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = torch.utils.data.DataLoader(
@@ -353,7 +356,7 @@ def eval(
         spm_filepath,
         max_length=max_seq_len,
         subword_regularization_alpha=subword_regularization_alpha,
-        split_source_targets_by_tab=True
+        split_source_targets_by_tab=eval_filepath.endswith(".json")
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = torch.utils.data.DataLoader(
