@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn as nn
 
-from models.code_moco import CodeEncoder
+from models.encoder import CodeEncoder, CodeEncoderLSTM
 
 
 class TypeTransformer(nn.Module):
@@ -20,6 +20,7 @@ class TypeTransformer(nn.Module):
         activation="relu",
         norm=True,
         pad_id=None,
+        encoder_type="transformer"
     ):
         super(TypeTransformer, self).__init__()
         assert norm
@@ -27,9 +28,21 @@ class TypeTransformer(nn.Module):
         self.config = {k: v for k, v in locals().items() if k != "self"}
 
         # Encoder
-        self.encoder = CodeEncoder(
-            n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
-        )
+        assert (encoder_type in ["transformer", "lstm"])
+        if encoder_type == "transformer":
+            self.encoder = CodeEncoder(
+                n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
+            )
+            # Output for type prediction
+            # TODO: Try LeakyReLU
+            self.output = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
+        elif encoder_type == "lstm":
+            self.encoder = CodeEncoderLSTM(
+                n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
+            )
+            # Output for type prediction
+            # TODO: Try LeakyReLU
+            self.output = nn.Sequential(nn.Linear(d_model*2, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
 
         # Feature aggregation
         # self.lam = nn.Parameter(torch.ones(1, 1, d_model, dtype=torch.float))
