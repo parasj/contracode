@@ -27,29 +27,20 @@ class TypeTransformer(nn.Module):
         assert pad_id is not None
         self.config = {k: v for k, v in locals().items() if k != "self"}
 
-        # Encoder
+        # Encoder and output for type prediction
         assert (encoder_type in ["transformer", "lstm"])
         if encoder_type == "transformer":
             self.encoder = CodeEncoder(
                 n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
             )
-            # Output for type prediction
             # TODO: Try LeakyReLU
             self.output = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
         elif encoder_type == "lstm":
+            assert n_encoder_layers == 2
             self.encoder = CodeEncoderLSTM(
-                n_tokens, d_model, d_rep, n_head, 2, d_ff, dropout, activation, norm, pad_id, project=False
+                n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
             )
-            # Output for type prediction
-            # TODO: Try LeakyReLU
             self.output = nn.Sequential(nn.Linear(d_model*2, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
-
-        # Feature aggregation
-        # self.lam = nn.Parameter(torch.ones(1, 1, d_model, dtype=torch.float))
-
-        # Output for type prediction
-        # TODO: Try LeakyReLU
-        self.output = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
 
     def forward(self, src_tok_ids, output_attention=None):
         r"""
@@ -66,9 +57,7 @@ class TypeTransformer(nn.Module):
 
         if output_attention is not None:
             # Aggregate features to the starting token in each labeled identifier
-            # memory = memory + self.lam * torch.matmul(output_attention, memory)  # BxLxD
             memory = torch.matmul(output_attention, memory)  # BxLxD
 
-        # Predict types
-        logits = self.output(memory)  # BxLxV
-        return logits
+        # Predict logits over types
+        return self.output(memory)  # BxLxV

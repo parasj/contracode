@@ -125,6 +125,7 @@ def train(
     pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
     no_output_attention: bool = False,
     encoder_type: str = "transformer",
+    n_encoder_layers: int = 6,
     # Optimization
     num_epochs: int = 100,
     save_every: int = 2,
@@ -194,8 +195,9 @@ def train(
     )
 
     # Create model
-    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id, encoder_type=encoder_type)
-    logger.info(f"Created TypeTransformer " + encoder_type + " with {count_parameters(model)} params")
+    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
+        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers)
+    logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
 
     # Load pretrained checkpoint
     if pretrain_resume_path:

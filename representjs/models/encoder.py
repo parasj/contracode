@@ -100,21 +100,30 @@ class CodeEncoderLSTM(nn.Module):
 
     def forward(self, x, no_project_override=False):
         self.encoder.flatten_parameters()
+        B, T = x.size(0), x.size(1)
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config["d_model"])
         src_emb = self.pos_encoder(src_emb)
-        if self.config["pad_id"] is not None:
-            src_key_padding_mask = x == self.config["pad_id"]
-        else:
-            src_key_padding_mask = None
-        #TODO: compute sequence lengths and pack src_emb with torch.nn.utils.pack_padded_sequence
-        #TODO: figure out padding mask; maybe should do random initialization 
+
+        # Compute sequence lengths and pack src_emb
+        assert self.config["pad_id"] is not None
+        src_key_padding_mask = x == self.config["pad_id"]
+        lengths = torch.empty(B, dtype=torch.long).fill_(T)
+        padding = x == self.config["pad_id"]
+        padded = torch.any(padding, dim=1)
+        for i in range(B):
+            if padded[i]:
+                lengths[i] = padding[i].nonzero().min()
+        src_emb = torch.nn.utils.rnn.pack_padded_sequence(src_emb, lengths, enforce_sorted=False)
         out, (h_n, c_n) = self.encoder(src_emb)  # TxBxD
+        out, _ = torch.nn.utils.rnn.pad_packed_sequence(out)
+        assert out.size(0) == T
 
         if not no_project_override and self.config["project"]:
             if self.config["project"] == "sequence_mean":
                 # out is T x B x n_directions*d_model
+                # TODO: deal with padding
                 rep = out.mean(dim=0)  # B x n_directions*d_model
-            elif self.config["project"] == "hidden"
+            elif self.config["project"] == "hidden":
                 # h_n is n_layers*n_directions x B x d_model
                 rep = h_n.transpose(0, 1).view(x.size(0), -1)  # B x n_layers*n_directions*d_model
             else:
