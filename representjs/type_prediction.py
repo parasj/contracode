@@ -44,7 +44,7 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
         return res, deno
 
 
-def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_cuda=True):
+def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_cuda=True, no_output_attention=False):
     model.eval()
     no_type_id = target_to_id["O"]
     any_id = target_to_id["$any$"]
@@ -62,7 +62,10 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
             for X, output_attn, labels in pbar:
                 if use_cuda:
                     X, output_attn, labels = X.cuda(), output_attn.cuda(), labels.cuda()
-                logits = model(X, output_attn)  # BxLxVocab
+                if no_output_attention:
+                    logits = model(X, None)  # BxLxVocab
+                else:
+                    logits = model(X, output_attn)  # BxLxVocab
                 # Compute loss
                 loss = F.cross_entropy(logits.transpose(1, 2), labels, ignore_index=no_type_id)
 
@@ -120,6 +123,7 @@ def train(
     resume_path: str = "",
     pretrain_resume_path: str = "",
     pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
+    no_output_attention: bool = False,
     encoder_type: str = "transformer",
     # Optimization
     num_epochs: int = 100,
@@ -232,7 +236,7 @@ def train(
 
     # Evaluate initial metrics
     logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda)
+    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
     eval_metrics["epoch"] = epoch
@@ -248,7 +252,10 @@ def train(
                 output_attn = output_attn.cuda()
                 labels = labels.cuda()
             optimizer.zero_grad()
-            logits = model(X, output_attn)  # BxLxVocab
+            if no_output_attention:
+                logits = model(X, None)  # BxLxVocab
+            else:
+                logits = model(X, output_attn)  # BxLxVocab
             if ignore_any_loss:
                 # Don't train with $any$ type
                 labels_ignore_any = labels.clone()
@@ -285,7 +292,7 @@ def train(
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
         eval_metric, eval_metrics = _evaluate(
-            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda,)
+            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
         for metric, value in eval_metrics.items():
             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
         eval_metrics["epoch"] = epoch
@@ -322,6 +329,7 @@ def eval(
     max_seq_len=-1,
     # Model
     resume_path: str = "",
+    no_output_attention: bool = False,
     # Optimization
     batch_size=16,
     # Loss
@@ -384,7 +392,7 @@ def eval(
 
         # Evaluate metrics
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-        _, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda)
+        _, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
         for metric, value in eval_metrics.items():
             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
 

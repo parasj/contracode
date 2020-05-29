@@ -47,22 +47,27 @@ class TypeTransformer(nn.Module):
         # Feature aggregation
         # self.lam = nn.Parameter(torch.ones(1, 1, d_model, dtype=torch.float))
 
-    def forward(self, src_tok_ids, output_attention):
+        # Output for type prediction
+        # TODO: Try LeakyReLU
+        self.output = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
+
+    def forward(self, src_tok_ids, output_attention=None):
         r"""
         Arguments:
             src_tok_ids: [B, L] long tensor
             output_attention: [B, L, L] float tensor
         """
-        if src_tok_ids.size(0) != output_attention.size(0):
+        if output_attention is not None and src_tok_ids.size(0) != output_attention.size(0):
             raise RuntimeError("the batch number of src_tok_ids and output_attention must be equal")
 
         # Encode
         memory = self.encoder(src_tok_ids)  # LxBxD
         memory = memory.transpose(0, 1)  # BxLxD
 
-        # Aggregate features to the starting token in each labeled identifier
-        # memory = memory + self.lam * torch.matmul(output_attention, memory)  # BxLxD
-        memory = torch.matmul(output_attention, memory)  # BxLxD
+        if output_attention is not None:
+            # Aggregate features to the starting token in each labeled identifier
+            # memory = memory + self.lam * torch.matmul(output_attention, memory)  # BxLxD
+            memory = torch.matmul(output_attention, memory)  # BxLxD
 
         # Predict types
         logits = self.output(memory)  # BxLxV
