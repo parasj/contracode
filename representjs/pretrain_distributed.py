@@ -142,6 +142,10 @@ def pretrain(
     loss_mode="infonce",  # infonce, mlm, or hybrid
     min_alternatives=1,
     #
+    # Model
+    encoder_type: str = "transformer",
+    lstm_project_mode: str = "hidden",
+    #
     # Optimization
     num_epochs: int = 100,
     save_every: int = 1,
@@ -240,7 +244,10 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # Create model
     if config["loss_mode"] == "infonce":
-        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
+        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id, encoder_config=dict(
+            encoder_type=encoder_type,
+            lstm_project_mode=lstm_project_mode
+        ))
         logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
     elif config["loss_mode"] == "mlm":
         model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id)

@@ -92,7 +92,9 @@ class CodeEncoderLSTM(nn.Module):
         self.encoder = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=n_encoder_layers, bidirectional=True)
 
         if project:
-            self.project_layer = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
+            assert project in ["sequence_mean", "hidden"]
+            project_in = 2 * d_model if project == "sequence_mean" else n_encoder_layers * 2 * d_model
+            self.project_layer = nn.Sequential(nn.Linear(project_in, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
         # NOTE: We use the default PyTorch intialization, so no need to reset parameters.
 
     def forward(self, x, no_project_override=False):
@@ -103,9 +105,19 @@ class CodeEncoderLSTM(nn.Module):
             src_key_padding_mask = x == self.config["pad_id"]
         else:
             src_key_padding_mask = None
+        #TODO: compute sequence lengths and pack src_emb with torch.nn.utils.pack_padded_sequence
         #TODO: figure out padding mask; maybe should do random initialization 
-        out, _ = self.encoder(src_emb)  # TxBxD
+        out, (h_n, c_n) = self.encoder(src_emb)  # TxBxD
+
         if not no_project_override and self.config["project"]:
-            return self.project_layer(out.mean(dim=0))
-        else:
-            return out
+            if self.config["project"] == "sequence_mean":
+                # out is T x B x n_directions*d_model
+                rep = out.mean(dim=0)  # B x n_directions*d_model
+            elif self.config["project"] == "hidden"
+                # h_n is n_layers*n_directions x B x d_model
+                rep = h_n.transpose(0, 1).view(x.size(0), -1)  # B x n_layers*n_directions*d_model
+            else:
+                raise ValueError
+            return self.project_layer(rep)
+
+        return out
