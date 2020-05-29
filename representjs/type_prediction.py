@@ -32,7 +32,7 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
         correct = pred.eq(target.unsqueeze(-1).expand_as(pred)).long()
         mask = torch.ones_like(target).long()
         for idx in ignore_idx:
-            mask = mask & ~target.eq(idx)
+            mask = mask.long() & (~target.eq(idx)).long()
         mask = mask.long()
         deno = mask.sum().item()
         correct = correct * mask.unsqueeze(-1)

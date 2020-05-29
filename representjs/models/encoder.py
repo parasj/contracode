@@ -89,13 +89,14 @@ class CodeEncoderLSTM(nn.Module):
         norm_fn = nn.LayerNorm(d_model) if norm else None
 
         #Currently using 2 layers of LSTM
-        self.encoder = nn.LSTM(input_size=self.d_model, hidden_size=self.d_model, num_layers=n_encoder_layers, bidirectional=True)
+        self.encoder = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=n_encoder_layers, bidirectional=True)
 
         if project:
             self.project_layer = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
         # NOTE: We use the default PyTorch intialization, so no need to reset parameters.
 
     def forward(self, x, no_project_override=False):
+        self.encoder.flatten_parameters()
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config["d_model"])
         src_emb = self.pos_encoder(src_emb)
         if self.config["pad_id"] is not None:

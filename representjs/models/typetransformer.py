@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn as nn
 
-from models.encoder import CodeEncoder, CodeLSTMEncoder
+from models.encoder import CodeEncoder, CodeEncoderLSTM
 
 
 class TypeTransformer(nn.Module):
@@ -33,17 +33,19 @@ class TypeTransformer(nn.Module):
             self.encoder = CodeEncoder(
                 n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
             )
+            # Output for type prediction
+            # TODO: Try LeakyReLU
+            self.output = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
         elif encoder_type == "lstm":
-            self.encoder = CodeLSTMEncoder(
+            self.encoder = CodeEncoderLSTM(
                 n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
             )
+            # Output for type prediction
+            # TODO: Try LeakyReLU
+            self.output = nn.Sequential(nn.Linear(d_model*2, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
 
         # Feature aggregation
         # self.lam = nn.Parameter(torch.ones(1, 1, d_model, dtype=torch.float))
-
-        # Output for type prediction
-        # TODO: Try LeakyReLU
-        self.output = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
 
     def forward(self, src_tok_ids, output_attention):
         r"""
