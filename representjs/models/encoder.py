@@ -89,6 +89,7 @@ class CodeEncoderLSTM(nn.Module):
         norm_fn = nn.LayerNorm(d_model) if norm else None
 
         #Currently using 2 layers of LSTM
+        print(f"CodeEncoderLSTM: Creating BiLSTM with {n_encoder_layers} layers, {d_model} hidden and input size")
         self.encoder = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=n_encoder_layers, bidirectional=True)
 
         if project:
