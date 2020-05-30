@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from models.encoder import CodeEncoder
+from models.encoder import CodeEncoder, CodeEncoderLSTM
 
 
 class MoCoTemplate(nn.Module):
@@ -58,7 +58,7 @@ class MoCoTemplate(nn.Module):
 
         self.queue_ptr[0] = ptr
 
-    def forward(self, im_q, im_k):
+    def forward(self, im_q, im_k, lengths_k, lengths_q):
         """
         Input:
             im_q: a batch of query images
@@ -68,7 +68,7 @@ class MoCoTemplate(nn.Module):
         """
 
         # compute query features
-        q = self.encoder_q(im_q)  # queries: NxC
+        q = self.encoder_q(im_q, lengths_q)  # queries: NxC
         q = nn.functional.normalize(q, dim=1)
 
         # compute key features
@@ -78,7 +78,7 @@ class MoCoTemplate(nn.Module):
             # shuffle for making use of BN
             # im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
-            k = self.encoder_k(im_k)  # keys: NxC
+            k = self.encoder_k(im_k, lengths_k)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
 
             # undo shuffle
@@ -120,29 +120,27 @@ def concat_all_gather(tensor):
 
 
 class CodeMoCo(MoCoTemplate):
-    def __init__(self, n_tokens, d_model=512, d_rep=128, K=107520, m=0.999, T=0.07, encoder_config={}, pad_id=None):
-        super().__init__(d_rep, K, m, T, dict(n_tokens=n_tokens, d_model=d_model, d_rep=d_rep, pad_id=pad_id, **encoder_config))
+    def __init__(self, n_tokens, d_model=512, d_rep=128, K=107520, m=0.999, T=0.07, encoder_config={}, pad_id=None, eos_id=None):
+        super().__init__(d_rep, K, m, T, dict(n_tokens=n_tokens, d_model=d_model, d_rep=d_rep, pad_id=pad_id, eos_id=eos_id, **encoder_config))
 
-    def make_encoder(self, n_tokens, d_model, d_rep, pad_id=None, encoder_type="transformer", lstm_project_mode="hidden", n_encoder_layers=6, **kwargs):
+    def make_encoder(self, n_tokens, d_model, d_rep, pad_id=None, eos_id=None, encoder_type="transformer", lstm_project_mode="hidden", n_encoder_layers=6, dropout=0.1, **kwargs):
         if encoder_type == "transformer":
             return CodeEncoder(n_tokens, project=True, pad_id=pad_id, d_model=d_model, d_rep=d_rep, n_encoder_layers=n_encoder_layers, **kwargs)
         elif encoder_type == "lstm":
-            self.encoder = CodeEncoderLSTM(
+            return CodeEncoderLSTM(
                 n_tokens=n_tokens,
                 d_model=d_model,
                 d_rep=d_rep,
                 n_encoder_layers=n_encoder_layers,
-                d_ff=d_ff,
                 dropout=dropout,
-                activation=activation,
-                norm=norm,
                 pad_id=pad_id,
+                eos_id=eos_id,
                 project=lstm_project_mode
             )
         else:
             raise ValueError
 
-    def forward(self, im_q, im_k):
+    def forward(self, im_q, im_k, lengths_q, lengths_k):
         """
         Input:
             im_q: a batch of query images
@@ -150,4 +148,4 @@ class CodeMoCo(MoCoTemplate):
         Output:
             logits, targets
         """
-        return super().forward(im_q, im_k)
+        return super().forward(im_q, im_k, lengths_q, lengths_k)

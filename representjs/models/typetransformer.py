@@ -20,6 +20,7 @@ class TypeTransformer(nn.Module):
         activation="relu",
         norm=True,
         pad_id=None,
+        eos_id=None,
         encoder_type="transformer"
     ):
         super(TypeTransformer, self).__init__()
@@ -38,11 +39,18 @@ class TypeTransformer(nn.Module):
         elif encoder_type == "lstm":
             assert n_encoder_layers == 2
             self.encoder = CodeEncoderLSTM(
-                n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
+                n_tokens=n_tokens,
+                d_model=d_model,
+                d_rep=d_rep,
+                n_encoder_layers=n_encoder_layers,
+                dropout=dropout,
+                pad_id=pad_id,
+                eos_id=eos_id,
+                project=False
             )
             self.output = nn.Sequential(nn.Linear(d_model*2, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
 
-    def forward(self, src_tok_ids, output_attention=None):
+    def forward(self, src_tok_ids, lengths=None, output_attention=None):
         r"""
         Arguments:
             src_tok_ids: [B, L] long tensor
@@ -52,7 +60,7 @@ class TypeTransformer(nn.Module):
             raise RuntimeError("the batch number of src_tok_ids and output_attention must be equal")
 
         # Encode
-        memory = self.encoder(src_tok_ids)  # LxBxD
+        memory = self.encoder(src_tok_ids, lengths)  # LxBxD
         memory = memory.transpose(0, 1)  # BxLxD
 
         if output_attention is not None:

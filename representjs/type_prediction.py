@@ -59,13 +59,13 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
             total_loss = 0
             num_examples = 0
             pbar = tqdm.tqdm(loader, desc=f"evalaute")
-            for X, output_attn, labels in pbar:
+            for X, lengths, output_attn, labels in pbar:
                 if use_cuda:
-                    X, output_attn, labels = X.cuda(), output_attn.cuda(), labels.cuda()
+                    X, lengths, output_attn, labels = X.cuda(), lengths.cuda(), output_attn.cuda(), labels.cuda()
                 if no_output_attention:
-                    logits = model(X, None)  # BxLxVocab
+                    logits = model(X, lengths, None)  # BxLxVocab
                 else:
-                    logits = model(X, output_attn)  # BxLxVocab
+                    logits = model(X, lengths, output_attn)  # BxLxVocab
                 # Compute loss
                 loss = F.cross_entropy(logits.transpose(1, 2), labels, ignore_index=no_type_id)
 
@@ -161,6 +161,7 @@ def train(
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
+    eos_id = sp.PieceToId("</s>")
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -196,7 +197,7 @@ def train(
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers)
+        eos_id=eos_id, encoder_type=encoder_type, n_encoder_layers=n_encoder_layers)
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
 
     # Load pretrained checkpoint
@@ -248,16 +249,14 @@ def train(
         logger.info(f"Starting epoch {epoch}\n")
         model.train()
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
-        for X, output_attn, labels in pbar:
+        for X, lengths, output_attn, labels in pbar:
             if use_cuda:
-                X = X.cuda()
-                output_attn = output_attn.cuda()
-                labels = labels.cuda()
+                X, lengths, output_attn, labels = X.cuda(), lengths.cuda(), output_attn.cuda(), labels.cuda()
             optimizer.zero_grad()
             if no_output_attention:
-                logits = model(X, None)  # BxLxVocab
+                logits = model(X, lengths, None)  # BxLxVocab
             else:
-                logits = model(X, output_attn)  # BxLxVocab
+                logits = model(X, lengths, output_attn)  # BxLxVocab
             if ignore_any_loss:
                 # Don't train with $any$ type
                 labels_ignore_any = labels.clone()
@@ -332,6 +331,8 @@ def eval(
     # Model
     resume_path: str = "",
     no_output_attention: bool = False,
+    encoder_type: str = "transformer",
+    n_encoder_layers: int = 6,
     # Optimization
     batch_size=16,
     # Loss
@@ -339,7 +340,6 @@ def eval(
     # Computational
     use_cuda: bool = True,
     seed: int = 0,
-    encoder_type: str = "transformer"
 ):
     """Train model"""
     torch.manual_seed(seed)
@@ -355,6 +355,7 @@ def eval(
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
+    eos_id = sp.PieceToId("</s>")
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -378,8 +379,9 @@ def eval(
     )
 
     # Create model
-    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id, encoder_type=encoder_type)
-    logger.info(f"Created TypeTransformer " + encoder_type + " with {count_parameters(model)} params")
+    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
+        eos_id=eos_id, encoder_type=encoder_type, n_encoder_layers=n_encoder_layers)
+    logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
 
