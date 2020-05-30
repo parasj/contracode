@@ -135,6 +135,8 @@ def train(
     adam_beta2: float = 0.98,
     adam_eps: float = 1e-6,
     weight_decay: float = 0,
+    warmup_steps: int = 5000,
+    num_steps: int = 200000,
     # Loss
     subword_regularization_alpha: float = 0,
     ignore_any_loss: bool = False,
@@ -222,7 +224,7 @@ def train(
     model = model.cuda() if use_cuda else model
     wandb.watch(model, log="all")
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(adam_beta1, adam_beta2), eps=adam_eps, weight_decay=weight_decay)
-    scheduler = get_linear_schedule_with_warmup(optimizer, 5000, 200000)
+    scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps, num_steps)
     epoch = 0
     global_step = 0
     min_eval_metric = float("inf")
