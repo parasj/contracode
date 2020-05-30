@@ -148,6 +148,7 @@ def pretrain(
     encoder_type: str = "transformer",
     lstm_project_mode: str = "hidden",
     n_encoder_layers: int = 6,
+    d_model: int = 512,
     #
     # Optimization
     num_epochs: int = 100,
@@ -155,6 +156,8 @@ def pretrain(
     batch_size: int = 256,
     lr: float = 8e-4,
     adam_betas=(0.9, 0.98),
+    warmup_steps: int = 5000,
+    num_steps: int = 200000,
     #
     # Distributed
     rank: int = -1,
@@ -253,7 +256,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # Create model
     if config["loss_mode"] == "infonce":
-        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id, eos_id=eos_id, encoder_config=dict(
+        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id, eos_id=eos_id, d_model=config["d_model"], encoder_config=dict(
             encoder_type=config["encoder_type"],
             lstm_project_mode=config["lstm_project_mode"],
             n_encoder_layers=config["n_encoder_layers"]
@@ -286,7 +289,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # define optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=0)
-    sched = get_linear_schedule_with_warmup(optimizer, 5000, 200000)
+    sched = get_linear_schedule_with_warmup(optimizer, config["warmup_steps"], config["num_steps"])
 
     # Setup data
     train_dataset = PrecomputedDataset(
