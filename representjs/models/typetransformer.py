@@ -37,7 +37,6 @@ class TypeTransformer(nn.Module):
             # TODO: Try LeakyReLU
             self.output = nn.Sequential(nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
         elif encoder_type == "lstm":
-            assert n_encoder_layers == 2
             self.encoder = CodeEncoderLSTM(
                 n_tokens=n_tokens,
                 d_model=d_model,
