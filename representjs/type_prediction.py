@@ -164,7 +164,6 @@ def train(
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
-    eos_id = sp.PieceToId("</s>")
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -200,7 +199,7 @@ def train(
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        eos_id=eos_id, encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
+        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
 
     # Load pretrained checkpoint
@@ -358,7 +357,6 @@ def eval(
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
-    eos_id = sp.PieceToId("</s>")
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -383,7 +381,7 @@ def eval(
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        eos_id=eos_id, encoder_type=encoder_type, n_encoder_layers=n_encoder_layers)
+        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers)
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model

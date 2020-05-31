@@ -20,7 +20,6 @@ class TypeTransformer(nn.Module):
         activation="relu",
         norm=True,
         pad_id=None,
-        eos_id=None,
         encoder_type="transformer"
     ):
         super(TypeTransformer, self).__init__()
@@ -44,7 +43,6 @@ class TypeTransformer(nn.Module):
                 n_encoder_layers=n_encoder_layers,
                 dropout=dropout,
                 pad_id=pad_id,
-                eos_id=eos_id,
                 project=False
             )
             self.output = nn.Sequential(nn.Linear(d_model*2, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))

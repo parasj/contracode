@@ -76,7 +76,6 @@ class CodeEncoderLSTM(nn.Module):
         n_encoder_layers=2,
         dropout=0.1,
         pad_id=None,
-        eos_id=None,
         project=False,
     ):
         super().__init__()
