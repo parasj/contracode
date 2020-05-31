@@ -123,6 +123,7 @@ def train(
     resume_path: str = "",
     pretrain_resume_path: str = "",
     pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
+    pretrain_resume_project: bool = False,
     no_output_attention: bool = False,
     encoder_type: str = "transformer",
     n_encoder_layers: int = 6,
@@ -209,6 +210,7 @@ def train(
         checkpoint = torch.load(pretrain_resume_path)
         pretrained_state_dict = checkpoint["model_state_dict"]
         encoder_state_dict = {}
+        output_state_dict = {}
         assert pretrain_resume_encoder_name in ["encoder_k", "encoder_q", "encoder"]
 
         for key, value in pretrained_state_dict.items():
@@ -216,7 +218,13 @@ def train(
                 remapped_key = key[len(pretrain_resume_encoder_name + ".") :]
                 logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
                 encoder_state_dict[remapped_key] = value
+            if key.startswith(pretrain_resume_encoder_name + ".") and "project_layer.0." in key and pretrain_resume_project:
+                remapped_key = key[len(pretrain_resume_encoder_name + ".project_layer.") :]
+                logger.debug(f"Remapping checkpoint project key {key} to output key {remapped_key}. Value mean: {value.mean().item()}")
+                output_state_dict[remapped_key] = value
         model.encoder.load_state_dict(encoder_state_dict)
+        # TODO: check for head key rather than output for MLM
+        model.output.load_state_dict(output_state_dict, strict=False)
         logger.info(f"Loaded state dict from {pretrain_resume_path}")
 
     # Set up optimizer
