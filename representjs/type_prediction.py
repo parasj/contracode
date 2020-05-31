@@ -335,6 +335,7 @@ def eval(
     no_output_attention: bool = False,
     encoder_type: str = "transformer",
     n_encoder_layers: int = 6,
+    d_model: int = 512,
     # Optimization
     batch_size=16,
     # Loss
@@ -381,7 +382,7 @@ def eval(
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers)
+        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
