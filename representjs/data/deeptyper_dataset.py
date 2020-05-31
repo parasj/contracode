@@ -151,6 +151,9 @@ def get_collate_fn(pad_id, no_type_id):
         X = pad_sequence(X, batch_first=True, padding_value=pad_id)
         L = X.size(1)
 
+        # Create tensor of sequence lengths, [B]
+        lengths = torch.tensor([len(x) for x in X], dtype=torch.long)
+
         # Make masks for each label interval
         labels = torch.zeros(B, L, dtype=torch.long)
         labels.fill_(no_type_id)
@@ -160,7 +163,7 @@ def get_collate_fn(pad_id, no_type_id):
                 labels[i, label_start] = label_id
                 output_attn[i, label_start, label_start:label_end] = 1.0 / (label_end.item() - label_start.item())
 
-        return X, output_attn, labels
+        return X, lengths, output_attn, labels
 
     return collate_fn
 

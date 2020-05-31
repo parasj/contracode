@@ -32,7 +32,7 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
         correct = pred.eq(target.unsqueeze(-1).expand_as(pred)).long()
         mask = torch.ones_like(target).long()
         for idx in ignore_idx:
-            mask = mask & ~target.eq(idx)
+            mask = mask.long() & (~target.eq(idx)).long()
         mask = mask.long()
         deno = mask.sum().item()
         correct = correct * mask.unsqueeze(-1)
@@ -44,7 +44,7 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
         return res, deno
 
 
-def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_cuda=True):
+def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_cuda=True, no_output_attention=False):
     model.eval()
     no_type_id = target_to_id["O"]
     any_id = target_to_id["$any$"]
@@ -59,10 +59,13 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
             total_loss = 0
             num_examples = 0
             pbar = tqdm.tqdm(loader, desc=f"evalaute")
-            for X, output_attn, labels in pbar:
+            for X, lengths, output_attn, labels in pbar:
                 if use_cuda:
-                    X, output_attn, labels = X.cuda(), output_attn.cuda(), labels.cuda()
-                logits = model(X, output_attn)  # BxLxVocab
+                    X, lengths, output_attn, labels = X.cuda(), lengths.cuda(), output_attn.cuda(), labels.cuda()
+                if no_output_attention:
+                    logits = model(X, lengths, None)  # BxLxVocab
+                else:
+                    logits = model(X, lengths, output_attn)  # BxLxVocab
                 # Compute loss
                 loss = F.cross_entropy(logits.transpose(1, 2), labels, ignore_index=no_type_id)
 
@@ -93,7 +96,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
 
         logger.debug(f"Loss calculation took {t.interval:.3f}s")
         return (
-            acc1_any,
+            -acc1_any,
             {
                 "eval/loss": avg_loss,
                 "eval/acc@1": acc1,
@@ -120,6 +123,10 @@ def train(
     resume_path: str = "",
     pretrain_resume_path: str = "",
     pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
+    no_output_attention: bool = False,
+    encoder_type: str = "transformer",
+    n_encoder_layers: int = 6,
+    d_model: int = 512,
     # Optimization
     num_epochs: int = 100,
     save_every: int = 2,
@@ -129,6 +136,8 @@ def train(
     adam_beta2: float = 0.98,
     adam_eps: float = 1e-6,
     weight_decay: float = 0,
+    warmup_steps: int = 5000,
+    num_steps: int = 200000,
     # Loss
     subword_regularization_alpha: float = 0,
     ignore_any_loss: bool = False,
@@ -155,6 +164,7 @@ def train(
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
+    eos_id = sp.PieceToId("</s>")
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -189,8 +199,9 @@ def train(
     )
 
     # Create model
-    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id)
-    logger.info(f"Created TypeTransformer with {count_parameters(model)} params")
+    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
+        eos_id=eos_id, encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
+    logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
 
     # Load pretrained checkpoint
     if pretrain_resume_path:
@@ -214,7 +225,7 @@ def train(
     model = model.cuda() if use_cuda else model
     wandb.watch(model, log="all")
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(adam_beta1, adam_beta2), eps=adam_eps, weight_decay=weight_decay)
-    scheduler = get_linear_schedule_with_warmup(optimizer, 5000, 200000)
+    scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps, num_steps)
     epoch = 0
     global_step = 0
     min_eval_metric = float("inf")
@@ -231,7 +242,7 @@ def train(
 
     # Evaluate initial metrics
     logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda)
+    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
     eval_metrics["epoch"] = epoch
@@ -241,13 +252,14 @@ def train(
         logger.info(f"Starting epoch {epoch}\n")
         model.train()
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
-        for X, output_attn, labels in pbar:
+        for X, lengths, output_attn, labels in pbar:
             if use_cuda:
-                X = X.cuda()
-                output_attn = output_attn.cuda()
-                labels = labels.cuda()
+                X, lengths, output_attn, labels = X.cuda(), lengths.cuda(), output_attn.cuda(), labels.cuda()
             optimizer.zero_grad()
-            logits = model(X, output_attn)  # BxLxVocab
+            if no_output_attention:
+                logits = model(X, lengths, None)  # BxLxVocab
+            else:
+                logits = model(X, lengths, output_attn)  # BxLxVocab
             if ignore_any_loss:
                 # Don't train with $any$ type
                 labels_ignore_any = labels.clone()
@@ -284,7 +296,7 @@ def train(
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
         eval_metric, eval_metrics = _evaluate(
-            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda,)
+            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
         for metric, value in eval_metrics.items():
             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
         eval_metrics["epoch"] = epoch
@@ -321,6 +333,9 @@ def eval(
     max_seq_len=-1,
     # Model
     resume_path: str = "",
+    no_output_attention: bool = False,
+    encoder_type: str = "transformer",
+    n_encoder_layers: int = 6,
     # Optimization
     batch_size=16,
     # Loss
@@ -343,6 +358,7 @@ def eval(
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
+    eos_id = sp.PieceToId("</s>")
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -366,23 +382,26 @@ def eval(
     )
 
     # Create model
-    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id)
-    logger.info(f"Created TypeTransformer with {count_parameters(model)} params")
+    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
+        eos_id=eos_id, encoder_type=encoder_type, n_encoder_layers=n_encoder_layers)
+    logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
 
-    # Load checkpoint
-    logger.info(f"Loading parameters from {resume_path}")
-    checkpoint = torch.load(resume_path)
-    model.module.load_state_dict(checkpoint["model_state_dict"])
-    epoch = checkpoint["epoch"]
-    global_step = checkpoint["global_step"]
+    model.eval()
+    with torch.no_grad():
+        # Load checkpoint
+        logger.info(f"Loading parameters from {resume_path}")
+        checkpoint = torch.load(resume_path)
+        model.module.load_state_dict(checkpoint["model_state_dict"])
+        epoch = checkpoint["epoch"]
+        global_step = checkpoint["global_step"]
 
-    # Evaluate metrics
-    logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-    _, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda)
-    for metric, value in eval_metrics.items():
-        logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
+        # Evaluate metrics
+        logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
+        _, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
+        for metric, value in eval_metrics.items():
+            logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
 
 
 def concatenate_files_in_list(

@@ -41,11 +41,12 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
 
 
 def training_step(model, batch, use_cuda=False):
-    imgs, _ = batch
+    imgs, lengths, _ = batch
     if use_cuda:
         imgs = imgs.cuda(non_blocking=True)
     imgs_k, imgs_q = imgs[:, 0, :], imgs[:, 1, :]
-    output, target = model(imgs_q, imgs_k)
+    lengths_k, lengths_q = lengths[:, 0], lengths[:, 1]
+    output, target = model(imgs_q, imgs_k, lengths_k, lengths_q)
     loss = F.cross_entropy(output, target)
     acc1, acc5 = accuracy(output, target, topk=(1, 5))
     logs = {
@@ -84,7 +85,8 @@ def mask_mlm(seq, pad_id, mask_id, vocab_start_range, vocab_end_range):
 
 
 def training_step_mlm(sp, model, batch, mask_id: int, pad_id: int, vocab_start_idx: int, vocab_end_idx: int, use_cuda=True):
-    seq, _ = batch  # B x L
+    seq, _lengths, _ = batch  # B x L
+    # TODO: implement LSTM for MLM model and pass lengths to model call
     if use_cuda:
         seq = seq.cuda()
     B, L = seq.shape
@@ -102,7 +104,7 @@ def training_step_mlm(sp, model, batch, mask_id: int, pad_id: int, vocab_start_i
 
 
 def training_step_hybrid(sp, model, batch, mask_id, pad_id, vocab_start_idx, vocab_end_idx, use_cuda):
-    imgs, _ = batch
+    imgs, _lengths, _ = batch
     imgs_k, imgs_q = imgs[:, 0, :], imgs[:, 1, :]
     imgs_q, mlm_targets = mask_mlm(imgs_q, pad_id, mask_id, vocab_start_idx, vocab_end_idx)
     if use_cuda:
@@ -136,11 +138,17 @@ def pretrain(
     spm_filepath: str = DEFAULT_SPM_UNIGRAM_FILEPATH,
     num_workers=1,
     limit_dataset_size=-1,
-    # max_sequence_length=1024,
+    max_length=1024,
     subword_regularization_alpha: float = 0,
     program_mode="contrastive",
     loss_mode="infonce",  # infonce, mlm, or hybrid
     min_alternatives=1,
+    #
+    # Model
+    encoder_type: str = "transformer",
+    lstm_project_mode: str = "hidden",
+    n_encoder_layers: int = 6,
+    d_model: int = 512,
     #
     # Optimization
     num_epochs: int = 100,
@@ -148,6 +156,8 @@ def pretrain(
     batch_size: int = 256,
     lr: float = 8e-4,
     adam_betas=(0.9, 0.98),
+    warmup_steps: int = 5000,
+    num_steps: int = 600000,
     #
     # Distributed
     rank: int = -1,
@@ -217,6 +227,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
     sp = spm.SentencePieceProcessor()
     sp.Load(config["spm_filepath"])
     pad_id = sp.PieceToId("[PAD]")
+    eos_id = sp.PieceToId("</s>")
     mask_id = sp.PieceToId("[MASK]")
 
     def pad_collate(batch):
@@ -227,6 +238,9 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         else:
             X = batch
 
+        # Create tensor of sequence lengths, [B] or [2B]
+        lengths = torch.tensor([len(x) for x in X], dtype=torch.long)
+
         # Create padded tensor for batch, [B, T] or [2B, T]
         X = pad_sequence(X, batch_first=True, padding_value=pad_id)
 
@@ -236,11 +250,17 @@ def pretrain_worker(gpu, ngpus_per_node, config):
             X = torch.reshape(X, (2, B, -1))
             X = torch.transpose(X, 0, 1)
             assert X.shape == (B, 2, T)
-        return X, None
+            lengths = torch.reshape(lengths, (2, B)).transpose(0, 1)
+            assert lengths.shape == (B, 2)
+        return X, lengths, None
 
     # Create model
     if config["loss_mode"] == "infonce":
-        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id)
+        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id, eos_id=eos_id, d_model=config["d_model"], encoder_config=dict(
+            encoder_type=config["encoder_type"],
+            lstm_project_mode=config["lstm_project_mode"],
+            n_encoder_layers=config["n_encoder_layers"]
+        ))
         logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
     elif config["loss_mode"] == "mlm":
         model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id)
@@ -269,7 +289,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # define optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=0)
-    sched = get_linear_schedule_with_warmup(optimizer, 5000, 600000)
+    sched = get_linear_schedule_with_warmup(optimizer, config["warmup_steps"], config["num_steps"])
 
     # Setup data
     train_dataset = PrecomputedDataset(
@@ -279,6 +299,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         limit_size=config["limit_dataset_size"],
         sp=sp,
         subword_regularization_alpha=config["subword_regularization_alpha"],
+        max_length=config["max_length"]
     )
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
