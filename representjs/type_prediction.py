@@ -123,6 +123,7 @@ def train(
     resume_path: str = "",
     pretrain_resume_path: str = "",
     pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
+    pretrain_resume_project: bool = False,
     no_output_attention: bool = False,
     encoder_type: str = "transformer",
     n_encoder_layers: int = 6,
@@ -164,7 +165,6 @@ def train(
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
-    eos_id = sp.PieceToId("</s>")
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -200,7 +200,7 @@ def train(
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        eos_id=eos_id, encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
+        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
 
     # Load pretrained checkpoint
@@ -210,6 +210,7 @@ def train(
         checkpoint = torch.load(pretrain_resume_path)
         pretrained_state_dict = checkpoint["model_state_dict"]
         encoder_state_dict = {}
+        output_state_dict = {}
         assert pretrain_resume_encoder_name in ["encoder_k", "encoder_q", "encoder"]
 
         for key, value in pretrained_state_dict.items():
@@ -217,7 +218,13 @@ def train(
                 remapped_key = key[len(pretrain_resume_encoder_name + ".") :]
                 logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
                 encoder_state_dict[remapped_key] = value
+            if key.startswith(pretrain_resume_encoder_name + ".") and "project_layer.0." in key and pretrain_resume_project:
+                remapped_key = key[len(pretrain_resume_encoder_name + ".project_layer.") :]
+                logger.debug(f"Remapping checkpoint project key {key} to output key {remapped_key}. Value mean: {value.mean().item()}")
+                output_state_dict[remapped_key] = value
         model.encoder.load_state_dict(encoder_state_dict)
+        # TODO: check for head key rather than output for MLM
+        model.output.load_state_dict(output_state_dict, strict=False)
         logger.info(f"Loaded state dict from {pretrain_resume_path}")
 
     # Set up optimizer
@@ -336,6 +343,7 @@ def eval(
     no_output_attention: bool = False,
     encoder_type: str = "transformer",
     n_encoder_layers: int = 6,
+    d_model: int = 512,
     # Optimization
     batch_size=16,
     # Loss
@@ -358,7 +366,6 @@ def eval(
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
     pad_id = sp.PieceToId("[PAD]")
-    eos_id = sp.PieceToId("</s>")
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -383,7 +390,7 @@ def eval(
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        eos_id=eos_id, encoder_type=encoder_type, n_encoder_layers=n_encoder_layers)
+        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model

@@ -18,9 +18,8 @@ from data.util import Timer
 from metrics.f1 import F1MetricMethodName
 from models.transformer import TransformerModel
 from representjs import RUN_DIR
-from utils import count_parameters
+from utils import count_parameters, get_linear_schedule_with_warmup
 from decode import ids_to_strs, beam_search_decode
-from pretrain_distributed import get_linear_schedule_with_warmup
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"

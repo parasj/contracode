@@ -1,10 +1,6 @@
 const fs = require('fs');
 const lineReader = require('line-reader');
 
-var JavascriptAugmentations = require('./javascript_augmentations')
-const javascriptAugmenter = new JavascriptAugmentations();
-
-
 function escapeRegExp(string) {
     return string.replace(/[.*+\-?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
 }
@@ -15,60 +11,78 @@ function _fix_json_dict(json_dict, src_function_key, src_method_name_key) {
     // for (var regex of _fix_function_crop_regexes) {
     //     json_dict[src_function_key] = regex.sub(r'function\1', json_dict[src_function_key], count=1);
     // }
-    const method_name = json_dict[src_method_name_key];
+    const method_name = json_dict[src_method_name_key].replace("(", "");
     if (method_name) {
         // Remove function name from declaration, but leave it in the function body
-        const _function_name_regex = new RegExp(`(function\\s*)${escapeRegExp(method_name)}(\\s*\\()`, '');
-        json_dict[src_function_key] = json_dict[src_function_key].replace(_function_name_regex, '$1x$2');
+        var _function_name_regex = new RegExp(`(function\\s*)${escapeRegExp(method_name)}(\\s*\\()`, '');
+        var new_fn = json_dict[src_function_key].replace(_function_name_regex, '$1x$2');
+        if (new_fn === json_dict[src_function_key]) {
+            _function_name_regex = new RegExp(`(function\\*?\\s*)${escapeRegExp(method_name)}(.*\\()`, '');
+            new_fn = json_dict[src_function_key].replace(_function_name_regex, '$1x$2');
+            if (new_fn === json_dict[src_function_key]) {
+                _function_name_regex = new RegExp(`(function.*)${escapeRegExp(method_name)}(\\s*\\()`, '');
+                new_fn = json_dict[src_function_key].replace(_function_name_regex, '$1x$2');
+            }
+        }
+        json_dict[src_function_key] = new_fn;
     } else {
         json_dict[src_function_key] = "const x = " + json_dict[src_function_key];
     }
 }
 
 
-const augmentations = [	
-    {"fn": "rename_variable"},
-    {"fn": "insert_var_declaration"},
-    {"fn": "terser"},
-    {"fn": "sample_lines"}
-]
+if (require.main === module) {
+    var JavascriptAugmentations = require('./javascript_augmentations')
+    const javascriptAugmenter = new JavascriptAugmentations();
 
-const numAlternatives = 20;
+    const augmentations = [	
+        {"fn": "rename_variable"},
+        {"fn": "insert_var_declaration"},
+        {"fn": "terser"},
+        {"fn": "sample_lines"}
+    ]
 
-// var inFilepath = 'javascript_dedupe_definitions_nonoverlap_v2_train.jsonl';
-var inFilepath = process.argv[2];
-// var outFilepath = '/home/ajay/coderep/representjs/data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train_augmented.jsonl';
-var outFilepath = process.argv[3];
-var writeStream = fs.createWriteStream(outFilepath)
-var numProcessed = 0;
-var startTime = Date.now();
+    const numAlternatives = 20;
 
-lineReader.eachLine(inFilepath, function(line, last) {
-    var data = JSON.parse(line);
-    _fix_json_dict(data, 'function', 'identifier');
-    const identifier = data['identifier'];
-    const fn = data['function'];
+    // var inFilepath = 'javascript_dedupe_definitions_nonoverlap_v2_train.jsonl';
+    var inFilepath = process.argv[2];
+    // var outFilepath = '/home/ajay/coderep/representjs/data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train_augmented.jsonl';
+    var outFilepath = process.argv[3];
+    var writeStream = fs.createWriteStream(outFilepath)
+    var numProcessed = 0;
+    var startTime = Date.now();
 
-    let alternatives = [fn];
-    for (let i = 0; i < numAlternatives; i++) {
-        const transformed = javascriptAugmenter.transform(fn, augmentations);
-        alternatives.push(transformed);
-    }
-    let alternativesStr = JSON.stringify(alternatives);
-    writeStream.write(alternativesStr + "\n")
+    lineReader.eachLine(inFilepath, function(line, last) {
+        var data = JSON.parse(line);
+        _fix_json_dict(data, 'function', 'identifier');
+        const identifier = data['identifier'];
+        const fn = data['function'];
 
-    numProcessed++;
+        let alternatives = [fn];
+        for (let i = 0; i < numAlternatives; i++) {
+            const transformed = javascriptAugmenter.transform(fn, augmentations);
+            alternatives.push(transformed);
+        }
+        let alternativesStr = JSON.stringify(alternatives);
+        writeStream.write(alternativesStr + "\n")
 
-    if (numProcessed % 1000 == 0) {
-        var elapsed = Date.now() - startTime;
-        var linesPerSecond = numProcessed / (elapsed / 1000);
-        var remaining = (1843099 - numProcessed) / linesPerSecond / 3600;
-        console.log(`[${inFilepath}] Processed ${numProcessed} lines (${linesPerSecond} per sec, ${remaining} hours remaining)`)
-    }
+        numProcessed++;
 
-    if (last) {
-        console.log(`[${inFilepath}] Done reading!`);
+        if (numProcessed % 1000 == 0) {
+            var elapsed = Date.now() - startTime;
+            var linesPerSecond = numProcessed / (elapsed / 1000);
+            var remaining = (1843099 - numProcessed) / linesPerSecond / 3600;
+            console.log(`[${inFilepath}] Processed ${numProcessed} lines (${linesPerSecond} per sec, ${remaining} hours remaining)`)
+        }
 
-        return false;
-    }
-});
+        if (last) {
+            console.log(`[${inFilepath}] Done reading!`);
+
+            return false;
+        }
+    });
+}
+
+module.exports = {
+    _fix_json_dict: _fix_json_dict
+}

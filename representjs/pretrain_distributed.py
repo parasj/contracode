@@ -19,25 +19,10 @@ from models.code_mlm import CodeMLM, CodeContrastiveMLM
 from representjs import RUN_DIR, CSNJS_DIR
 from data.precomputed_dataset import PrecomputedDataset
 from models.code_moco import CodeMoCo
-from utils import accuracy, count_parameters
+from utils import accuracy, count_parameters, get_linear_schedule_with_warmup
 
 DEFAULT_CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 DEFAULT_SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
-
-
-def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
-    """
-    from https://huggingface.co/transformers/_modules/transformers/optimization.html
-    Create a schedule with a learning rate that decreases linearly after
-    linearly increasing during a warmup period.
-    """
-
-    def lr_lambda(current_step):
-        if current_step < num_warmup_steps:
-            return float(current_step) / float(max(1, num_warmup_steps))
-        return max(0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps)))
-
-    return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
 def training_step(model, batch, use_cuda=False):
@@ -85,14 +70,13 @@ def mask_mlm(seq, pad_id, mask_id, vocab_start_range, vocab_end_range):
 
 
 def training_step_mlm(sp, model, batch, mask_id: int, pad_id: int, vocab_start_idx: int, vocab_end_idx: int, use_cuda=True):
-    seq, _lengths, _ = batch  # B x L
-    # TODO: implement LSTM for MLM model and pass lengths to model call
+    seq, lengths, _ = batch  # B x L
     if use_cuda:
         seq = seq.cuda()
     B, L = seq.shape
     seq_masked, targets = mask_mlm(seq, pad_id, mask_id, vocab_start_idx, vocab_end_idx)
-    logger.debug(f"Example transform:\t{sp.DecodeIds(seq_masked[0].cpu().numpy().tolist())}")
-    output = model(seq_masked)  # B x L x Vocab
+    # logger.debug(f"Example transform:\t{sp.DecodeIds(seq_masked[0].cpu().numpy().tolist())}")
+    output = model(seq_masked, lengths)  # B x L x Vocab
     assert targets.shape == (B, L), f"{targets.shape} versus {B}x{L}"
     assert output.shape == (B, L, output.shape[-1]), output.shape
     loss = F.cross_entropy(output.flatten(end_dim=1), targets.flatten(), ignore_index=pad_id)
@@ -105,6 +89,7 @@ def training_step_mlm(sp, model, batch, mask_id: int, pad_id: int, vocab_start_i
 
 def training_step_hybrid(sp, model, batch, mask_id, pad_id, vocab_start_idx, vocab_end_idx, use_cuda):
     imgs, _lengths, _ = batch
+    # TODO: implement LSTM for hybrid model and pass lengths to model call
     imgs_k, imgs_q = imgs[:, 0, :], imgs[:, 1, :]
     imgs_q, mlm_targets = mask_mlm(imgs_q, pad_id, mask_id, vocab_start_idx, vocab_end_idx)
     if use_cuda:
@@ -227,7 +212,6 @@ def pretrain_worker(gpu, ngpus_per_node, config):
     sp = spm.SentencePieceProcessor()
     sp.Load(config["spm_filepath"])
     pad_id = sp.PieceToId("[PAD]")
-    eos_id = sp.PieceToId("</s>")
     mask_id = sp.PieceToId("[MASK]")
 
     def pad_collate(batch):
@@ -256,14 +240,14 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # Create model
     if config["loss_mode"] == "infonce":
-        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id, eos_id=eos_id, d_model=config["d_model"], encoder_config=dict(
+        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id, d_model=config["d_model"], encoder_config=dict(
             encoder_type=config["encoder_type"],
             lstm_project_mode=config["lstm_project_mode"],
             n_encoder_layers=config["n_encoder_layers"]
         ))
         logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
     elif config["loss_mode"] == "mlm":
-        model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id)
+        model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id, encoder_type=config["encoder_type"], n_encoder_layers=config["n_encoder_layers"])
         logger.info(f"Created CodeMLM model with {count_parameters(model)} params")
     elif config["loss_mode"] == "hybrid":
         model = CodeContrastiveMLM(sp.GetPieceSize(), pad_id=pad_id)
