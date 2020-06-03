@@ -140,6 +140,7 @@ def pretrain(
     save_every: int = 1,
     batch_size: int = 256,
     lr: float = 8e-4,
+    weight_decay: float = 0,
     adam_betas=(0.9, 0.98),
     warmup_steps: int = 5000,
     num_steps: int = 600000,
@@ -183,7 +184,7 @@ def pretrain(
     # Setup distributed
     ngpus_per_node = torch.cuda.device_count()
     config["world_size"] = ngpus_per_node  # only support 1 node
-    mp.spawn(pretrain_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config))
+    mp.spawn(pretrain_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config), join=True)
 
 
 def pretrain_worker(gpu, ngpus_per_node, config):
@@ -272,7 +273,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=0)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=config["weight_decay"])
     sched = get_linear_schedule_with_warmup(optimizer, config["warmup_steps"], config["num_steps"])
 
     # Setup data
@@ -326,7 +327,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
             sched.step()
 
             global_step += 1
-            pbar.set_description(f"epoch {epoch} step {global_step} loss {loss.item():.4f}")
+            pbar.set_description(f"epoch {epoch} gpu {gpu} step {global_step} loss {loss.item():.4f}")
 
             if chief_node:
                 wandb.log(dict(lr=sched.get_last_lr()[0]))
