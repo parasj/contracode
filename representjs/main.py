@@ -77,8 +77,8 @@ def calculate_f1_metric(
     test_loader,
     sp: spm.SentencePieceProcessor,
     use_cuda=True,
-    beam_search_k=5,
-    max_decode_len=21,
+    beam_search_k=16,
+    max_decode_len=10,  # see empirical evaluation of CDF of subwork token lengths
     logger_fn=None,
 ):
     with Timer() as t:
@@ -87,7 +87,7 @@ def calculate_f1_metric(
         pbar = tqdm.tqdm(test_loader, desc="test")
         for X, Y in pbar:
             if use_cuda:
-                X, Y = X.cuda(), Y.cuda()
+                X, Y = X.cuda(), Y.cuda()  # B, L
             pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
             for i in range(X.size(0)):
                 gt_identifier = ids_to_strs(Y[i], sp)
@@ -102,6 +102,33 @@ def calculate_f1_metric(
                     logger_fn({"precision_avg": precision / n_examples, "recall_avg": recall / n_examples, "f1_avg": f1 / n_examples})
     logger.debug(f"Test set evaluation (F1) took {t.interval:.3}s over {n_examples} samples")
     return precision / n_examples, recall / n_examples, f1 / n_examples
+
+
+def calculate_nll(
+    model,
+    test_loader,
+    sp: spm.SentencePieceProcessor,
+    use_cuda=True,
+    logger_fn=None
+):
+    with Timer() as t:
+        pad_id = sp.PieceToId("[PAD]")
+        n_examples = 0
+        test_nll = 0.
+        pbar = tqdm.tqdm(test_loader, desc="test")
+        for X, Y in pbar:
+            B, L = X.shape
+            if use_cuda:
+                X, Y = X.cuda(), Y.cuda()  # B, L
+            pred_y = model(X, Y[:, :-1].to(X.device))
+            B, X, D = pred_y.shape
+            loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction='sum')
+            
+            n_examples += B
+            test_nll += loss.item()
+            if logger_fn is not None:
+                logger_fn({'test_nll': loss.item() / B, 'test_nll_avg': test_nll / n_examples})
+        return test_nll / n_examples
 
 
 def test(
@@ -139,7 +166,7 @@ def test(
 
     model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
-
+    model.eval()
     if use_cuda:
         model = model.cuda()
 
@@ -154,11 +181,16 @@ def test(
         raise e
     logger.info(f"Loaded state dict from {checkpoint_file}")
 
+    # Evaluate NLL
+    with torch.no_grad():
+        test_nll = calculate_nll(model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
+    logger.info(f"NLL: {test_nll:.5f}")
+
     # Make metric
     metric = F1MetricMethodName()
-
     with torch.no_grad():
         precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
+    logger.info(f"NLL: {test_nll:.5f}")
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
     logger.info(f"F1: {f1:.5f}%")
