@@ -58,6 +58,9 @@ class MoCoTemplate(nn.Module):
 
         self.queue_ptr[0] = ptr
 
+    def embed(self, img):
+        return self.encoder_q(img)
+
     def forward(self, im_q, im_k, lengths_k, lengths_q):
         """
         Input:
