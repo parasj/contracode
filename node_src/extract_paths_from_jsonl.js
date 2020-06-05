@@ -29,6 +29,18 @@ var startTime = Date.now();
 // }
 
 
+function hashCode(str) {
+    var hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        let chr = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + chr;
+        hash |= 0; // Convert to 32bit integer
+    }
+    return hash;
+};
+
+
+
 // var props = ["params", "body", "argument", "property", "key", "value", "object", "property", "callee", "arguments", "params", "properties"];
 var terminalTypes = ["Identifier", "Literal"]
 var terminalProps = ["name", "raw"]
@@ -143,7 +155,7 @@ lineReader.eachLine(inFilepath, function(line, last) {
             } catch (e) {
                 console.log("parsing error", e);
                 console.log(function_string);
-                writeStream.write(identifier + " ERROR_PARSE\n")
+                writeStream.write(identifier + ` ERROR_PARSE,${hashCode("ERROR_PARSE")},ERROR_PARSE\n`)
                 return;
             }
         }
@@ -169,7 +181,9 @@ lineReader.eachLine(inFilepath, function(line, last) {
         for (var i = 0; i < numPathSamples; i++) {
             var path = getPath(fn);
             if (path) {
-                pathStr = `${path[0]},${path.slice(1,path.length-1)},${path[path.length-1]}`;
+                var nodeStr = path.slice(1,path.length-1).join("|");
+                pathStr = `${path[0]},${hashCode(nodeStr)},${path[path.length-1]}`;
+                // pathStr = `${path[0]},${path.slice(1,path.length-1)},${path[path.length-1]}`;
                 paths.push(pathStr);
             }
         }
@@ -180,7 +194,7 @@ lineReader.eachLine(inFilepath, function(line, last) {
                 writeStream.write(" " + path);
             })
         } else {
-            writeStream.write(" ERROR_NOPATHS");
+            writeStream.write(` ERROR_NOPATHS,${hashCode("ERROR_NOPATHS")},ERROR_NOPATHS`);
         }
         writeStream.write("\n");
 

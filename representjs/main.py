@@ -3,6 +3,7 @@ import random
 
 import fire
 import numpy as np
+import pandas as pd
 import sentencepiece as spm
 import torch
 import torch.nn as nn
@@ -77,21 +78,28 @@ def calculate_f1_metric(
     test_loader,
     sp: spm.SentencePieceProcessor,
     use_cuda=True,
-    beam_search_k=5,
-    max_decode_len=21,
+    beam_search_k=8,
+    max_decode_len=10,  # see empirical evaluation of CDF of subwork token lengths
     logger_fn=None,
 ):
     with Timer() as t:
+        sample_generations = []
         n_examples = 0
         precision, recall, f1 = 0.0, 0.0, 0.0
         pbar = tqdm.tqdm(test_loader, desc="test")
         for X, Y in pbar:
             if use_cuda:
-                X, Y = X.cuda(), Y.cuda()
-            pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
+                X, Y = X.cuda(), Y.cuda()  # B, L
+            with Timer() as t:
+                pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
+            logger.info(f"Took {t.interval:.2f}s to decode {X.size(0)} identifiers")
             for i in range(X.size(0)):
                 gt_identifier = ids_to_strs(Y[i], sp)
                 top_beam = pred[i][0]
+                pred_dict = {'gt': gt_identifier}
+                for i, beam_result in enumerate(pred[i]):
+                    pred_dict[f"pred_{i}"] = beam_result
+                sample_generations.append(pred_dict)
                 precision_item, score_item, f1_item = metric(top_beam, gt_identifier)
                 precision += precision_item
                 recall += score_item
@@ -101,7 +109,34 @@ def calculate_f1_metric(
                     logger_fn({"precision_item": precision_item, "recall_item": score_item, "f1_item": f1_item})
                     logger_fn({"precision_avg": precision / n_examples, "recall_avg": recall / n_examples, "f1_avg": f1 / n_examples})
     logger.debug(f"Test set evaluation (F1) took {t.interval:.3}s over {n_examples} samples")
-    return precision / n_examples, recall / n_examples, f1 / n_examples
+    return precision / n_examples, recall / n_examples, f1 / n_examples, sample_generations
+
+
+def calculate_nll(
+    model,
+    test_loader,
+    sp: spm.SentencePieceProcessor,
+    use_cuda=True,
+    logger_fn=None
+):
+    with Timer() as t:
+        pad_id = sp.PieceToId("[PAD]")
+        n_examples = 0
+        test_nll = 0.
+        pbar = tqdm.tqdm(test_loader, desc="test")
+        for X, Y in pbar:
+            B, L = X.shape
+            if use_cuda:
+                X, Y = X.cuda(), Y.cuda()  # B, L
+            pred_y = model(X, Y[:, :-1].to(X.device))
+            B, X, D = pred_y.shape
+            loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction='sum')
+            
+            n_examples += B
+            test_nll += loss.item()
+            if logger_fn is not None:
+                logger_fn({'test_nll': loss.item() / B, 'test_nll_avg': test_nll / n_examples})
+        return test_nll / n_examples
 
 
 def test(
@@ -112,7 +147,7 @@ def test(
     label_mode="identifier",
     num_workers=1,
     limit_dataset_size=-1,
-    batch_size=16,
+    batch_size=8,
     n_decoder_layers=4,
     use_cuda: bool = True,
 ):
@@ -139,7 +174,6 @@ def test(
 
     model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
     logger.info(f"Created TransformerModel with {count_parameters(model)} params")
-
     if use_cuda:
         model = model.cuda()
 
@@ -154,15 +188,25 @@ def test(
         raise e
     logger.info(f"Loaded state dict from {checkpoint_file}")
 
+    # Evaluate NLL
+    model.eval()
+    with torch.no_grad():
+        test_nll = calculate_nll(model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
+    logger.info(f"NLL: {test_nll:.5f}")
+
     # Make metric
     metric = F1MetricMethodName()
-
+    model.eval()
     with torch.no_grad():
-        precision, recall, f1 = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
+        precision, recall, f1, sample_generations = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
+    logger.info(f"NLL: {test_nll:.5f}")
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
     logger.info(f"F1: {f1:.5f}%")
 
+    df_generations = pd.DataFrame(sample_generations)
+    df_generations.to_pickle(os.path.join(wandb.run.dir, "sample_generations.pickle.gz"))
+    wandb.save(os.path.join(wandb.run.dir, "sample_generations.pickle.gz"))
 
 def train(
     run_name: str,
