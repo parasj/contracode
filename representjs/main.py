@@ -17,10 +17,10 @@ from data.jsonl_dataset import get_csnjs_dataset
 from data.old_dataloader import javascript_dataloader
 from data.util import Timer
 from metrics.f1 import F1MetricMethodName
-from models.transformer import TransformerModel
+from models.transformer import TransformerModel, Seq2SeqLSTM
 from representjs import RUN_DIR
 from utils import count_parameters, get_linear_schedule_with_warmup
-from decode import ids_to_strs, beam_search_decode
+# from decode import ids_to_strs, beam_search_decode
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
@@ -31,36 +31,43 @@ CSNJS_TEST_FILEPATH = os.path.join(DATA_DIR, "javascript_test_0.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model")
 
 
-def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20):
+def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20, loss_type="nll_token"):
     model.eval()
     pad_id = sp.PieceToId("[PAD]")
 
     with torch.no_grad():
-        with Timer() as t:
-            # Decode a single batch by beam search for visualization
-            X, Y = next(iter(loader))
-            X, Y = X[:num_to_print], Y[:num_to_print]
-            if use_cuda:
-                X = X.cuda()
-            pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
-            for i in range(X.size(0)):
-                logger.info(f"Eval X:   \t\t\t{ids_to_strs(X[i], sp)}")
-                logger.info(f"Eval GT Y:\t\t\t{ids_to_strs(Y[i], sp)}")
-                for b in range(scores.size(1)):
-                    logger.info(f"Eval beam (score={scores[i, b]:.3f}):\t{pred[i][b]}")
-        logger.debug(f"Decode time for {num_to_print} samples took {t.interval:.3f}")
+        # with Timer() as t:
+        #     # Decode a single batch by beam search for visualization
+        #     X, Y, X_lengths, _ = next(iter(loader))
+        #     X, Y = X[:num_to_print], Y[:num_to_print]
+        #     if use_cuda:
+        #         X = X.cuda()
+        #         X_lengths = X.cuda()
+        #     pred, scores = beam_search_decode(model, X, X_lengths, sp, k=beam_search_k, max_decode_len=max_decode_len)
+        #     for i in range(X.size(0)):
+        #         logger.info(f"Eval X:   \t\t\t{ids_to_strs(X[i], sp)}")
+        #         logger.info(f"Eval GT Y:\t\t\t{ids_to_strs(Y[i], sp)}")
+        #         for b in range(scores.size(1)):
+        #             logger.info(f"Eval beam (score={scores[i, b]:.3f}):\t{pred[i][b]}")
+        # logger.debug(f"Decode time for {num_to_print} samples took {t.interval:.3f}")
 
         with Timer() as t:
             # Compute average loss
             total_loss = 0
             num_examples = 0
             pbar = tqdm.tqdm(loader, desc="evalaute")
-            for X, Y in pbar:
+            for X, Y, X_lengths, Y_lengths in pbar:
                 if use_cuda:
                     X, Y = X.cuda(), Y.cuda()
+                    X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
                 # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
-                logits = model(X, Y[:, :-1])
-                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
+                logits = model(X, Y[:, :-1], X_lengths, Y_lengths)
+                if loss_type == "nll_sequence":
+                    loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id, reduction='sum')
+                    loss = loss / X.size(0)  # Average over num sequences, not target sequence lengths
+                                            # Thus, minimize bits per sequence.
+                elif loss_type == "nll_token":
+                    loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id,)
 
                 # TODO: Compute Precision/Recall/F1 and BLEU
 
@@ -87,11 +94,12 @@ def calculate_f1_metric(
         n_examples = 0
         precision, recall, f1 = 0.0, 0.0, 0.0
         pbar = tqdm.tqdm(test_loader, desc="test")
-        for X, Y in pbar:
+        for X, Y, X_lengths, Y_lengths in pbar:
             if use_cuda:
                 X, Y = X.cuda(), Y.cuda()  # B, L
+                X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
             with Timer() as t:
-                pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
+                pred, scores = beam_search_decode(model, X, X_lengths, sp, k=beam_search_k, max_decode_len=max_decode_len)
             logger.info(f"Took {t.interval:.2f}s to decode {X.size(0)} identifiers")
             for i in range(X.size(0)):
                 gt_identifier = ids_to_strs(Y[i], sp)
@@ -124,11 +132,12 @@ def calculate_nll(
         n_examples = 0
         test_nll = 0.
         pbar = tqdm.tqdm(test_loader, desc="test")
-        for X, Y in pbar:
+        for X, Y, X_lengths, Y_lengths in pbar:
             B, L = X.shape
             if use_cuda:
                 X, Y = X.cuda(), Y.cuda()  # B, L
-            pred_y = model(X, Y[:, :-1].to(X.device))
+                X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
+            pred_y = model(X, Y[:, :-1].to(X.device), X_lengths, Y_lengths)
             B, X, D = pred_y.shape
             loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction='sum')
             
@@ -220,9 +229,12 @@ def train(
     num_workers=1,
     limit_dataset_size=-1,
     # Model
+    model_type="transformer",
     n_decoder_layers=4,
+    d_model: int = 512,
     resume_path: str = "",
     resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
+    resume_project: bool = False,
     # Optimization
     train_decoder_only: bool = False,
     num_epochs: int = 50,
@@ -232,6 +244,7 @@ def train(
     adam_beta1: float = 0.9,
     adam_beta2: float = 0.98,
     use_lr_warmup: bool = True,
+    loss_type = "nll_token",  # nll_token or nll_sequence
     # Loss
     subword_regularization_alpha: float = 0,
     # Computational
@@ -295,8 +308,13 @@ def train(
     )
 
     # Create model
-    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
-    logger.info(f"Created TransformerModel with {count_parameters(model)} params")
+    pad_id = sp.PieceToId("[PAD]")
+    if model_type == "transformer":
+        model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=pad_id, n_decoder_layers=n_decoder_layers, d_model=d_model)
+        logger.info(f"Created TransformerModel with {count_parameters(model)} params")
+    elif model_type == "lstm":
+        model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
+        logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
 
     # Load checkpoint
     if resume_path:
@@ -311,8 +329,13 @@ def train(
                 remapped_key = key[len(resume_encoder_name + ".") :]
                 logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
                 encoder_state_dict[remapped_key] = value
-        model.encoder.load_state_dict(encoder_state_dict)
+            if key.startswith(resume_encoder_name + ".") and "project_layer.0." in key and resume_project:
+                remapped_key = key[len(resume_encoder_name + ".") :]
+                logger.debug(f"Remapping checkpoint project key {key} to {remapped_key}. Value mean: {value.mean().item()}")
+                encoder_state_dict[remapped_key] = value
+        model.encoder.load_state_dict(encoder_state_dict, strict=False)
         logger.info(f"Loaded state dict from {resume_path}")
+        logger.info(f"Loaded keys: {encoder_state_dict.keys()}")
 
     # Set up optimizer
     model = nn.DataParallel(model)
@@ -335,14 +358,20 @@ def train(
         else:
             model.train()
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
-        for X, Y in pbar:
+        for X, Y, X_lengths, Y_lengths in pbar:
             if use_cuda:
                 X = X.cuda()
                 Y = Y.cuda()
+                X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
             optimizer.zero_grad()
             # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
-            logits = model(X, Y[:, :-1])
-            loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id)
+            logits = model(X, Y[:, :-1], X_lengths, Y_lengths)
+            if loss_type == "nll_sequence":
+                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id, reduction='sum')
+                loss = loss / X.size(0)  # Average over num sequences, not target sequence lengths
+                                        # Thus, minimize bits per sequence.
+            elif loss_type == "nll_token":
+                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id,)
             loss.backward()
             optimizer.step()
             scheduler.step()
@@ -357,7 +386,7 @@ def train(
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
         max_decode_len = 20 if label_mode == "identifier" else 200
-        eval_loss = _evaluate(model, eval_loader, sp, use_cuda=use_cuda, max_decode_len=max_decode_len)
+        eval_loss = _evaluate(model, eval_loader, sp, use_cuda=use_cuda, max_decode_len=max_decode_len, loss_type=loss_type)
         logger.info(f"Evaluation loss after epoch {epoch} ({global_step} steps): {eval_loss:.4f}")
         wandb.log({"epoch": epoch, f"label-{label_mode}/eval_loss": eval_loss}, step=global_step)
 

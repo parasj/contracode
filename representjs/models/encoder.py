@@ -85,16 +85,19 @@ class CodeEncoderLSTM(nn.Module):
 
         #Currently using 2 layers of LSTM
         print(f"CodeEncoderLSTM: Creating BiLSTM with {n_encoder_layers} layers, {d_model} hidden and input size")
+        # TODO: Apply dropout to LSTM
         self.encoder = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=n_encoder_layers, bidirectional=True)
 
-        if project:
-            if project == "sequence_mean" or project == "sequence_mean_nonpad":
-                project_in = 2 * d_model
-            elif project == "hidden":
-                project_in = n_encoder_layers * 2 * d_model
-            else:
-                raise ValueError(f"Unknown value '{project}' for CodeEncoderLSTM project argument")
+        if project == "sequence_mean" or project == "sequence_mean_nonpad":
+            project_in = 2 * d_model
             self.project_layer = nn.Sequential(nn.Linear(project_in, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
+        elif project == "hidden":
+            project_in = n_encoder_layers * 2 * d_model
+            self.project_layer = nn.Sequential(nn.Linear(project_in, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
+        # elif project == "hidden_identity":
+        #     pass
+        else:
+            raise ValueError(f"Unknown value '{project}' for CodeEncoderLSTM project argument")
         # NOTE: We use the default PyTorch intialization, so no need to reset parameters.
 
     def forward(self, x, lengths, no_project_override=False):
@@ -124,6 +127,8 @@ class CodeEncoderLSTM(nn.Module):
             elif self.config["project"] == "hidden":
                 # h_n is n_layers*n_directions x B x d_model
                 rep = torch.flatten(h_n.transpose(0, 1), start_dim=1)
+            # elif self.config["project"] == "hidden_identity"
+            #     return torch.flatten(h_n.transpose(0, 1), start_dim=1)
             else:
                 raise ValueError
             return self.project_layer(rep)

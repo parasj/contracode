@@ -115,15 +115,18 @@ def get_javascript_collate(
 
         # Create padded tensor for batch, [B, T] or [2B, T]
         X = [torch.tensor([bos_id] + ids[: (max_length - 2)] + [eos_id]) for ids in X]
+        X_lengths = torch.tensor([len(x) for x in X], dtype=torch.long)
         X = pad_sequence(X, batch_first=True, padding_value=pad_id)
 
         # Create padded tensor for labels (good for seq2seq tasks)
         if "label" in examples[0]:
             label = [sp.EncodeAsIds(ex["label"]) for ex in examples]
             label = [torch.tensor([bos_id] + ids[: (max_target_length - 2)] + [eos_id]) for ids in label]
+            label_lengths = torch.tensor([len(l) for l in label], dtype=torch.long)
             label = pad_sequence(label, batch_first=True, padding_value=pad_id)
         else:
             label = None
+            label_lengths = None
 
         if program_mode == "contrastive":
             # Reshape X to [B, 2, T]
@@ -131,8 +134,9 @@ def get_javascript_collate(
             X = torch.reshape(X, (2, B, -1))
             X = torch.transpose(X, 0, 1)
             assert X.shape == (B, 2, T)
+            X_lengths = torch.reshape(X_lengths, (2, B))
             assert label is None, "label should be None when using contrastive program dataloader"
-        return (X, label)
+        return (X, label, X_lengths, label_lengths)
 
     return javascript_collate
 
