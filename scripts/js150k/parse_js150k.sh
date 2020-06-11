@@ -1,3 +1,0 @@
-#!/bin/bash
-cat ../data/js150k/programs_training.txt | parallel --eta --joblog logs/parse_js150k_train.joblog  --progress -j 48 "node parse_js_ast/parse_javascript.js ../data/js150k/raw_data/{} > ../data/js150k/raw_data/{}.ast" > logs/parse_js150k.log
-cat ../data/js150k/programs_eval.txt | parallel --eta --joblog logs/parse_js150k_eval.joblog  --progress -j 48 "node parse_js_ast/parse_javascript.js ../data/js150k/raw_data/{} > ../data/js150k/raw_data/{}.ast" > logs/parse_js150k_Eval.log
