@@ -20,7 +20,7 @@ from metrics.f1 import F1MetricMethodName
 from models.transformer import TransformerModel, Seq2SeqLSTM
 from representjs import RUN_DIR
 from utils import count_parameters, get_linear_schedule_with_warmup
-# from decode import ids_to_strs, beam_search_decode
+from decode import ids_to_strs, beam_search_decode
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
@@ -99,6 +99,7 @@ def calculate_f1_metric(
                 X, Y = X.cuda(), Y.cuda()  # B, L
                 X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
             with Timer() as t:
+                # pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
                 pred, scores = beam_search_decode(model, X, X_lengths, sp, k=beam_search_k, max_decode_len=max_decode_len)
             logger.info(f"Took {t.interval:.2f}s to decode {X.size(0)} identifiers")
             for i in range(X.size(0)):
@@ -157,7 +158,9 @@ def test(
     num_workers=1,
     limit_dataset_size=-1,
     batch_size=8,
+    model_type="transformer",
     n_decoder_layers=4,
+    d_model=512,
     use_cuda: bool = True,
 ):
     wandb.init(name=checkpoint_file, config=locals(), project="f1_eval", entity="ml4code")
@@ -181,14 +184,22 @@ def test(
         augmentations=[],
     )
 
-    model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=sp.PieceToId("[PAD]"), n_decoder_layers=n_decoder_layers)
-    logger.info(f"Created TransformerModel with {count_parameters(model)} params")
+    pad_id = sp.PieceToId("[PAD]")
+    if model_type == "transformer":
+        model = TransformerModel(n_tokens=sp.GetPieceSize(), pad_id=pad_id, n_decoder_layers=n_decoder_layers, d_model=d_model)
+        logger.info(f"Created TransformerModel with {count_parameters(model)} params")
+    elif model_type == "lstm":
+        model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
+        logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
     if use_cuda:
         model = model.cuda()
 
     # Load checkpoint
     checkpoint = torch.load(checkpoint_file)
     pretrained_state_dict = checkpoint["model_state_dict"]
+    print("CHECKPOINT", checkpoint_file)
+    from pprint import pprint
+    print("KEYS", checkpoint["model_state_dict"].keys())
     try:
         model.load_state_dict(pretrained_state_dict)
     except RuntimeError as e:
@@ -216,6 +227,7 @@ def test(
     df_generations = pd.DataFrame(sample_generations)
     df_generations.to_pickle(os.path.join(wandb.run.dir, "sample_generations.pickle.gz"))
     wandb.save(os.path.join(wandb.run.dir, "sample_generations.pickle.gz"))
+
 
 def train(
     run_name: str,
