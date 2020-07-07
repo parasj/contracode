@@ -88,16 +88,17 @@ class CodeEncoderLSTM(nn.Module):
         # TODO: Apply dropout to LSTM
         self.encoder = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=n_encoder_layers, bidirectional=True)
 
-        if project == "sequence_mean" or project == "sequence_mean_nonpad":
-            project_in = 2 * d_model
-            self.project_layer = nn.Sequential(nn.Linear(project_in, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
-        elif project == "hidden":
-            project_in = n_encoder_layers * 2 * d_model
-            self.project_layer = nn.Sequential(nn.Linear(project_in, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
-        # elif project == "hidden_identity":
-        #     pass
-        else:
-            raise ValueError(f"Unknown value '{project}' for CodeEncoderLSTM project argument")
+        if project:
+            if project == "sequence_mean" or project == "sequence_mean_nonpad":
+                project_in = 2 * d_model
+                self.project_layer = nn.Sequential(nn.Linear(project_in, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
+            elif project == "hidden":
+                project_in = n_encoder_layers * 2 * d_model
+                self.project_layer = nn.Sequential(nn.Linear(project_in, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
+            # elif project == "hidden_identity":
+            #     pass
+            else:
+                raise ValueError(f"Unknown value '{project}' for CodeEncoderLSTM project argument")
         # NOTE: We use the default PyTorch intialization, so no need to reset parameters.
 
     def forward(self, x, lengths, no_project_override=False):
