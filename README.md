@@ -11,6 +11,7 @@ Our approach uses no human-provided labels, relying only on the raw text of prog
 
 This repository contains code to augment JavaScript programs with code transformations, pre-train LSTM and Transformer models with ContraCode, and to finetune the models on downstream tasks.
 
+
 ## Installation
 Dependencies: Python 3.7, NodeJS, NPM
 ```bash
@@ -19,29 +20,11 @@ $ pip install -e "."
 $ python scripts/download_data.py
 ```
 
-## Instructions to train ContraCode MoCo baseline
-### Pre-training MoCo model using ContraCode
-```bash
-$ representjs/pretrain_distributed.py 200226_pretrain_dist --num_epochs=200 \
-    --batch_size=96 --lr=1e-4 --num_workers=6 --subword_regularization_alpha 0.1 \
-    --program_mode contrastive --label_mode contrastive --save_every 5000 \
-    --train_filepath=data/codesearchnet_javascript/javascript_augmented.pickle.gz \
-    --spm_filepath=data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
-    --min_alternatives 1 --dist_url tcp://localhost:10001 --rank 0
-```
-
-### Fine-tuning MoCo pretrained model on identifier prediction
-```bash
-$ representjs/main.py train --run_name 10120_identity_identifier_codeenc_noreset_finetune_4ldecoder_20026s45k \
-    --program_mode identity --label_mode identifier --n_decoder_layers=4 --subword_regularization_alpha 0 \
-    --num_epochs 100 --save_every 5 --batch_size 32 --num_workers 4 --lr 1e-4 \
-    --train_filepath data/codesearchnet_javascript/javascript_train_supervised.jsonl.gz \
-    --eval_filepath data/codesearchnet_javascript/javascript_valid_0.jsonl.gz \
-    --resume_path PATH_TO_PRETRAIN_CKPT
-```
 
 ## Data and checkpoints
-Download the `data` subfolder from [this Google Drive link](https://drive.google.com/drive/folders/153pZfKPcr1-l8VaDPys29b1ElGLuoq3M?usp=sharing), and place at the root of the repository. This folder contains training and evaluation data, vocabularies and model checkpoints..
+
+Download the `data` subfolder from [this Google Drive link](https://drive.google.com/drive/folders/153pZfKPcr1-l8VaDPys29b1ElGLuoq3M?usp=sharing) and place at the root of the repository. This folder contains training and evaluation data, vocabularies and model checkpoints.
+
 
 ## Pretraining models with ContraCode
 Pretrain Bidirectional LSTM with ContraCode (10001 should be an available port, change if the port is in use):
