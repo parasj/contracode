@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
+    <title>Contrastive Code Representation Learning</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.5.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro">
+    <link rel="stylesheet" href="assets/css/Highlight-Clean.css">
+    <link rel="stylesheet" href="assets/css/styles.css">
+    <link rel="stylesheet" href="assets/css/Team-Clean.css">
+
+    <meta property="og:site_name" content="ContraCode" />
+    <meta property="og:type" content="video.other" />
+    <meta property="og:title" content="Contrastive Code Representation Learning" />
+    <meta property="og:description" content="Jain et al 2020. Contrastive Code Representation Learning." />
+    <meta property="og:url" content="https://parasj.github.io/contracode/" />
+    <meta property="og:image" content="https://parasj.github.io/contracode/assets/img/conceptual_stacked.png" />
+  
+    <meta property="article:publisher" content="https://github.com/parasj" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Contrastive Code Representation Learning" />
+    <meta name="twitter:description" content="Jain et al 2020. Contrastive Code Representation Learning." />
+    <meta name="twitter:url" content="https://parasj.github.io/contracode/" />
+    <meta name="twitter:image" content="https://parasj.github.io/contracode/assets/img/conceptual_stacked.png" />
+    <meta name="twitter:site" content="@_parasj" />
+</head>
+
+<body>
+    <div class="highlight-clean" style="padding-bottom: 10px;">
+        <div class="container">
+            <h1 class="text-center">Contrastive Code Representation Learning</h1>
+        </div>
+        <div class="container" style="max-width: 768px;">
+            <div class="row">
+                <div class="col-md-4">
+                    <h5 class="text-center" style="margin: 0px;"><a href="https://www.parasjain.com/">Paras Jain*</a></h5>
+                    <h6 class="text-center">UC Berkeley</h6>
+                </div>
+                <div class="col-md-4">
+                    <h5 class="text-center" style="margin: 0px;"><a class="text-center" href="https://www.ajayjain.net/">Ajay Jain*</a></h5>
+                    <h6 class="text-center">UC Berkeley</h6>
+                </div>
+                <div class="col-md-4">
+                    <h5 class="text-center" style="margin: 0px;"><a class="text-center" href="https://www.linkedin.com/in/tianjun-zhang-333bb2126/">Tianjun Zhang</a></h5>
+                    <h6 class="text-center">UC Berkeley</h6>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <h5 class="text-center" style="margin: 0px;"><a class="text-center" href="https://people.eecs.berkeley.edu/~pabbeel/">Pieter Abbeel</a></h5>
+                    <h6 class="text-center">UC Berkeley</h6>
+                </div>
+                <div class="col-md-4">
+                    <h5 class="text-center" style="margin: 0px;"><a class="text-center" href="https://people.eecs.berkeley.edu/~jegonzal/">Joseph Gonzalez</a></h5>
+                    <h6 class="text-center">UC Berkeley</h6>
+                </div>
+                <div class="col-md-4">
+                    <h5 class="text-center" style="margin: 0px;"><a class="text-center" href="https://people.eecs.berkeley.edu/~istoica/">Ion Stoica</a></h5>
+                    <h6 class="text-center">UC Berkeley</h6>
+                </div>
+            </div>
+        </div>
+        <div class="buttons" style="margin-bottom: 8px;">
+            <a class="btn btn-primary" role="button" href="#">Paper (arXiv)</a>
+            <a class="btn btn-light" role="button" href="https://github.com/parasj/contracode">GitHub</a>
+        </div>
+        <div class="container" style="max-width: 768px;">
+            <div class="row">
+                <div class="col-md-12 text-center"><img src="assets/img/conceptual_stacked.png" style="width: 100%;margin-bottom: 8px;" alt="Conceptual overview of ContraCode"><em>For many machine-aided programming tasks, <strong>programs with the same functionality should have the same underlying representation</strong>. ContraCode learns such representation with contrastive learning: the network is trained to find equivalent programs among many distractors.</em></div>
+            </div>
+        </div>
+    </div>
+    <hr style="max-width: 768px;">
+    <div class="container" style="max-width: 768px;">
+        <div class="row">
+            <div class="col-md-12">
+                <h2>Summary</h2>
+                <ul>
+                    <li>Developer tools increasingly use machine learning to understand and modify human-written code.</li>
+                    <li>For the best code understanding results, we hypothesize that learned code representations should be similar for functionally equivalent programs and dissimilar for non-equivalent programs.</li>
+                    <li>We propose ContraCode: a methodology to learn similar representations for functionally equivalent programs through contrastive pre-training.</li>
+                    <li>During pre-training, we apply compiler transformations to generate (approximately) equivalent, textually divergent batches of programs.</li>
+                    <li>Finetuned models improve automated code summarization and type inference in JavaScript.</li>
+                </ul>
+        </div>
+    </div>
+    <hr style="max-width: 768px;">
+    <div class="container" style="max-width: 768px;">
+        <div class="row">
+            <div class="col-md-12">
+                <h2>Abstract</h2>
+                <p>
+                    Machine-aided programming tools such as type predictors and code summarizers are increasingly learning-based. However, most code representation learning approaches rely on supervised learning with task-specific annotated datasets. We propose <em>Contrastive Code Representation Learning (ContraCode)</em>, a
+                    self-supervised algorithm for learning task-agnostic semantic representations of programs via contrastive learning. Our approach uses no human-provided labels, relying only on the raw text of programs. In particular, we design an unsupervised pretext task by generating textually divergent copies of source functions via automated source-to-source compiler transforms that preserve semantics. We train a neural model to identify variants of an anchor program within a large batch of negatives. To solve this task, the network must extract program features representing the functionality, not form, of the program. This is the first application of instance discrimination to code representation learning to our knowledge. We pre-train ContraCode over 1.8m unannotated JavaScript methods mined from GitHub. ContraCode pre-training improves code summarization accuracy by 8% over supervised approaches and 5% over BERT pre-training. Moreover, our approach is agnostic to model architecture; for a type prediction task, contrastive pre-training consistently improves the accuracy of existing baselines.
+                <br>
+                </p>
+            </div>
+        </div>
+    </div>
+    <hr style="max-width: 768px;">
+    <div class="container" style="max-width: 768px;">
+        <div class="row">
+            <div class="col-md-12">
+                <h2>Compiler transforms for code data augmentation</h2>
+                <p>Finding equivalent programs in a dataset is challenging. In computer vision, random crops of a source image are frequently used as "equivalent" views of it for augmenting training sets or for unsupervised pre-training. However, it's challenging to define similar data augmentations for natural and programming languages. We propose to use <em>automated source-to-source compiler transformations</em> to generate augmentations of programs that preserve functionality. These transforms include dead code elimination, variable renaming and constant folding. We also explore lossy transforms like code deletion that only preserve some of the program semantics.
+                <br></p>
+                <img class="img-fluid"
+                    src="assets/img/codetransform.png" style="margin-bottom: 8px;"><em class="text-center" style="display: block;">An example JavaScript method from the unlabeled GitHub training set and two semantically equivalent programs. The equivalent programs were automatically generated through compiler transformations, serving as "augmentations" or "views" of the original program.</em></div>
+        </div>
+    </div>
+    <hr style="max-width: 768px;">
+    <div class="container" style="max-width: 768px;">
+        <div class="row">
+            <div class="col-md-12">
+                <h2>Contrastive pre-training</h2>
+                <p>
+                    Contrastive Code Representation Learning (ContraCode) is a pretext representation learning task that uses these code augmentations to construct a challenging <em>discriminative</em> pretext task that requires the model to identify equivalent programs out of a large dataset of distractors. 
+                    In doing so, it has to embed the functionality, not form, of the code. 
+                    In essence, the domain knowledge from our code transformations induces the knowledge of the structure of programs onto learned representations.
+                <br></p>
+                <img class="img-fluid"
+                    src="assets/img/training.png" style="margin-bottom: 8px;"><em class="text-center" style="display: block;">ContraCode extends the Momentum Contrast vision pretraining framework to learn an encoder of programs from a database of unlabeled programs and a suite of semantics-preserving transformations.</em></div>
+        </div>
+    </div>
+    <hr style="max-width: 768px;">
+    <div class="container" style="max-width: 768px;">
+        <div class="row">
+            <div class="col-md-12">
+                <h2>Finetuning on downstream tasks</h2>
+                <p>
+                    By learning functionality-based representations, a model pre-trained with ContraCode outperforms baselines that are are trained from scratch or pre-trained with reconstruction objectives like masked language modeling. We demonstrate these improvements by finetuning LSTM and Transformer models on type inference and code summarization tasks.
+                <br></p>
+                <img class="img-fluid"
+                    src="assets/img/typeinference.png" style="margin: 0 auto 8px auto; width: 100%; max-width: 540px; display: block">
+                <em class="text-center" style="display: block; margin: 0 auto;">After finetuning, an LSTM pretrained with ContraCode predicts the argument and return types of an untyped TypeScript method correctly, which can be useful for developers.</em>
+                <img class="img-fluid"
+                    src="assets/img/methodnames.png" style="margin: 16px auto 8px auto; display: block; width: 100%; max-width: 540px">
+                <em class="text-center" style="display: block; margin: 0 auto;">A finetuned model can also predict the name of a method from its body, a form of code summarization that demonstrates understanding of the code and could be useful for deobfuscation.</em>
+            </div>
+        </div>
+    </div>
+    <hr style="max-width: 768px;">
+    <div class="container" style="max-width: 768px;">
+        <div class="row">
+            <div class="col-md-12">
+                <h2>Citation</h2>
+                <p>Paras Jain*, Ajay Jain*, Tianjun Zhang, Pieter Abbeel, Joseph E. Gonzalez, Ion Stoica. Contrastive Code Representation Learning.<strong>&nbsp;In submission,</strong>&nbsp;2020. <em>* Denotes equal contribution.</em><br></p><code>@article{jain2020contrastive,<br>&nbsp; title={Contrastive Code Representation Learning},<br>&nbsp; author={Paras Jain and Ajay Jain and Tianjun Zhang<br>&nbsp;&nbsp;and Pieter Abbeel and Joseph E. Gonzalez and Ion Stoica},<br>&nbsp; year={2020},<br>&nbsp; journal={arXiv preprint}<br>}<br></code></div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.5.0/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
