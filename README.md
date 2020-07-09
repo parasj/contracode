@@ -40,6 +40,97 @@ $ representjs/main.py train --run_name 10120_identity_identifier_codeenc_noreset
     --resume_path PATH_TO_PRETRAIN_CKPT
 ```
 
+## Data and checkpoints
+Download the `data` subfolder from [this Google Drive link](https://drive.google.com/drive/folders/153pZfKPcr1-l8VaDPys29b1ElGLuoq3M?usp=sharing), and place at the root of the repository. This folder contains training and evaluation data, vocabularies and model checkpoints..
+
+## Pretraining models with ContraCode
+Pretrain Bidirectional LSTM with ContraCode (10001 should be an available port, change if the port is in use):
+```
+python representjs/pretrain_distributed.py pretrain_lstm2l_hidden \
+  --num_epochs=200 --batch_size=512 --lr=1e-4 --num_workers=4 \
+  --subword_regularization_alpha 0.1 --program_mode contrastive --label_mode contrastive --save_every 5000 \
+  --train_filepath=data/codesearchnet_javascript/javascript_augmented.pickle.gz \
+  --spm_filepath=data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
+  --min_alternatives 2 --dist_url tcp://localhost:10001 --rank 0 \
+  --encoder_type lstm --lstm_project_mode hidden --n_encoder_layers 2
+```
+
+Pretrain Transformer with ContraCode:
+```
+python representjs/pretrain_distributed.py pretrain_transformer \
+  --num_epochs=200 --batch_size=96 --lr=1e-4 --num_workers=6 \
+  --subword_regularization_alpha 0.1 --program_mode contrastive --label_mode contrastive --save_every 5000 \
+  --train_filepath=/dev/shm/codesearchnet_javascript/javascript_augmented.pickle.gz \
+  --spm_filepath=/dev/shm/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
+  --min_alternatives 1 --dist_url tcp://localhost:10001 --rank 0
+```
+
+Pretrain Transformer with hybrid MLM + ContraCode objective:
+```
+python representjs/pretrain_distributed.py pretrain_transformer_hybrid \
+  --num_epochs=200 --batch_size=96 --lr=4e-4 --num_workers=8 \
+  --subword_regularization_alpha 0. --program_mode contrastive --loss_mode hybrid --save_every 5000 \
+  --train_filepath=data/codesearchnet_javascript/javascript_augmented.pickle.gz \
+  --spm_filepath=data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
+  --min_alternatives 1 --dist_url "tcp://localhost:10001" --rank 0
+```
+
+## Finetuning and evaluating on downstream type prediction task
+
+Commands to reproduce key type prediction results are provided below.
+
+### Type prediction with an LSTM (pretrained with ContraCode)
+*Evaluate* our finetuned Bidirectional LSTM (Table 2, `DeepTyper d=512 + ContraCode; MoCo (hidden), 20k`):
+```
+python representjs/type_prediction.py eval --eval_filepath data/types/test_projects_gold_filtered.json --type_vocab_filepath data/types/target_wl --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model --num_workers 4 --batch_size 1 --max_seq_len -1 --no_output_attention True --encoder_type lstm --n_encoder_layers 2 --resume_path data/ft/ckpt_lstm_ft_types.pth
+```
+
+*Finetune* Bidirectional LSTM pretrained with ContraCode:
+```
+python representjs/type_prediction.py train --run_name types_contracode --train_filepath data/types/train_nounk.txt --eval_filepath data/types/valid_nounk.txt --type_vocab_filepath data/types/target_wl --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model --num_workers 4 --batch_size 16 --max_seq_len 2048 --max_eval_seq_len 2048 --lr 1e-3 --no_output_attention True --encoder_type lstm --n_encoder_layers 2 --warmup_steps 10000 --pretrain_resume_path data/pretrain/ckpt_lstm_pretrain_20k.pth --pretrain_resume_encoder_name encoder_q
+```
+
+### Type prediction with a Transformer (pretrained with ContraCode)
+*Evaluate* our finetuned Transformer (Table 2, `Transformer + ContraCode; MoCo, 240k steps`):
+```
+python representjs/type_prediction.py eval --eval_filepath data/types/test_projects_gold_filtered.json --type_vocab_filepath data/types/target_wl --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model --num_workers 4 --batch_size 1 --max_seq_len -1 --resume_path data/pretrain/ckpt_transformer_ft_types.pth
+```
+
+*Finetune* Transformer pretrained with ContraCode:
+```
+python representjs/type_prediction.py train --run_name types_contracode_transformer --train_filepath data/types/train_nounk.txt --eval_filepath data/types/valid_nounk.txt --type_vocab_filepath data/types/target_wl --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model	--num_workers 4 --batch_size 16 --max_seq_len 2048 --max_eval_seq_len 2048 --pretrain_resume_path data/pretrain/ckpt_transformer_pretrain_240k.pth --pretrain_resume_encoder_name encoder_q --lr 1e-4
+```
+
+### Type prediction with a hybrid Transformer (pretraining with both MLM and ContraCode)
+*Evaluate* our finetuned hybrid Transformer (Table 2, `RoBERTa + ContraCode; MLM + MoCo, 240k steps`):
+```
+python representjs/type_prediction.py eval --eval_filepath data/types/test_projects_gold_filtered.json --type_vocab_filepath data/types/target_wl --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model --num_workers 4 --batch_size 1 --max_seq_len -1 --resume_path data/ft/ckpt_transformer_hybrid_ft_types.pth
+```
+
+*Finetune* Transformer after hybrid pretraining:
+```
+python representjs/type_prediction.py train --run_name types_hybrid_transformer --train_filepath data/types/train_nounk.txt --eval_filepath data/types/valid_nounk.txt --type_vocab_filepath data/types/target_wl --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model	--num_workers 4 --batch_size 16 --max_seq_len 2048 --max_eval_seq_len 2048 --pretrain_resume_path data/pretrain/ckpt_transformer_hybrid_pretrain_240k.pth --pretrain_resume_encoder_name encoder_q --lr 1e-4
+```
+
+## Finetuning and evaluating on downstream method naming task
+*Evaluate* (Table 1, `Transformer + ContraCode; MoCo, 20k steps`):
+```
+python representjs/main.py test --batch_size 64 --num_workers 8 --n_decoder_layers 4 \
+  --checkpoint_file data/ft/ckpt_transformer_ft_names.pth \
+  --test_filepath data/codesearchnet_javascript/javascript_test_0.jsonl.gz \
+  --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model
+```
+
+*Finetune*:
+```
+python representjs/main.py train --run_name names_ft \
+  --program_mode identity --label_mode identifier --n_decoder_layers=4 --subword_regularization_alpha 0 \
+  --num_epochs 100 --save_every 5 --batch_size 32 --num_workers 4 --lr 1e-4 \
+  --train_filepath data/codesearchnet_javascript/javascript_train_supervised.jsonl.gz \
+  --eval_filepath data/codesearchnet_javascript/javascript_valid_0.jsonl.gz \
+  --resume_path data/pretrain/ckpt_transformer_pretrain_20k.pth
+```
+
 ## Citation
 If you find this code or our paper relevant to your work, please cite our arXiv paper:
 ```
