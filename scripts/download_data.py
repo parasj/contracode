@@ -3,8 +3,8 @@ import os
 
 from tqdm import tqdm
 
-REMOTE_BASE = "https://people.eecs.berkeley.edu/~paras/datasets/"
-SHARED_BASE = Path("/work/paras/data/").resolve()
+REMOTE_BASE = "https://contrastive-code.s3.amazonaws.com"
+SHARED_BASE = Path("/tmp/contrastive_data/").resolve()
 LOCAL_BASE = (Path(__file__).parent.parent / "data").resolve()
 
 

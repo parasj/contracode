@@ -44,9 +44,7 @@ if (require.main === module) {
 
     const numAlternatives = 20;
 
-    // var inFilepath = 'javascript_dedupe_definitions_nonoverlap_v2_train.jsonl';
     var inFilepath = process.argv[2];
-    // var outFilepath = '/home/ajay/coderep/representjs/data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train_augmented.jsonl';
     var outFilepath = process.argv[3];
     var writeStream = fs.createWriteStream(outFilepath)
     var numProcessed = 0;
