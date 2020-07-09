@@ -14,14 +14,14 @@
     <meta property="og:site_name" content="ContraCode" />
     <meta property="og:type" content="video.other" />
     <meta property="og:title" content="Contrastive Code Representation Learning" />
-    <meta property="og:description" content="Jain et al 2020. Contrastive Code Representation Learning." />
+    <meta property="og:description" content="Jain et al., Contrastive Code Representation Learning, 2020. For many machine-aided programming tasks, programs with the same functionality should have the same underlying representation. ContraCode learns such representations with contrastive learning: the network is trained to find equivalent programs among many distractors." />
     <meta property="og:url" content="https://parasj.github.io/contracode/" />
     <meta property="og:image" content="https://parasj.github.io/contracode/assets/img/conceptual_2to1.png" />
   
     <meta property="article:publisher" content="https://github.com/parasj" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Contrastive Code Representation Learning" />
-    <meta name="twitter:description" content="Jain et al 2020. Contrastive Code Representation Learning." />
+    <meta name="twitter:description" content="For many machine-aided programming tasks, programs with the same functionality should have the same underlying representation. ContraCode learns such representations with contrastive learning: the network is trained to find equivalent programs among many distractors." />
     <meta name="twitter:url" content="https://parasj.github.io/contracode/" />
     <meta name="twitter:image" content="https://parasj.github.io/contracode/assets/img/conceptual_2to1.png" />
     <meta name="twitter:site" content="@_parasj" />
@@ -95,8 +95,12 @@
             <div class="col-md-12">
                 <h2>Abstract</h2>
                 <p>
-                    Machine-aided programming tools such as type predictors and code summarizers are increasingly learning-based. However, most code representation learning approaches rely on supervised learning with task-specific annotated datasets. We propose <em>Contrastive Code Representation Learning (ContraCode)</em>, a
-                    self-supervised algorithm for learning task-agnostic semantic representations of programs via contrastive learning. Our approach uses no human-provided labels, relying only on the raw text of programs. In particular, we design an unsupervised pretext task by generating textually divergent copies of source functions via automated source-to-source compiler transforms that preserve semantics. We train a neural model to identify variants of an anchor program within a large batch of negatives. To solve this task, the network must extract program features representing the functionality, not form, of the program. This is the first application of instance discrimination to code representation learning to our knowledge. We pre-train ContraCode over 1.8m unannotated JavaScript methods mined from GitHub. ContraCode pre-training improves code summarization accuracy by 8% over supervised approaches and 5% over BERT pre-training. Moreover, our approach is agnostic to model architecture; for a type prediction task, contrastive pre-training consistently improves the accuracy of existing baselines.
+                    Machine-aided programming tools such as type predictors and code summarizers are increasingly learning-based. However, most code representation learning approaches rely on supervised learning with task-specific annotated datasets.
+                    We propose <em>Contrastive Code Representation Learning (ContraCode)</em>, a self-supervised algorithm for learning task-agnostic semantic representations of programs via contrastive learning. Our approach uses no human-provided labels, relying only on the raw text of programs.
+                    In particular, we design an unsupervised pretext task by generating textually divergent copies of source functions via automated source-to-source compiler transforms that preserve semantics.
+                    We train a neural model to identify variants of an anchor program within a large batch of negatives. To solve this task, the network must extract program features representing the functionality, not form, of the program.
+                    This is the first application of instance discrimination to code representation learning to our knowledge. We pre-train models over 1.8m unannotated JavaScript methods mined from GitHub. ContraCode pre-training improves code summarization accuracy by 7.9% over supervised approaches and 4.8% over RoBERTa pre-training.
+                    Moreover, our approach is agnostic to model architecture; for a type inference task, contrastive pre-training consistently improves the accuracy of existing baselines.
                 <br>
                 </p>
             </div>
