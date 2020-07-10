@@ -1,9 +1,9 @@
 # Contrastive Code Representation Learning
-By Paras Jain, Ajay Jain, Tianjun Zhang, Pieter Abbeel, Joseph E. Gonzalez and Ion Stoica
+By Paras Jain, Ajay Jain, Tianjun Zhang, Pieter Abbeel, Joseph E. Gonzalez and Ion Stoica ([website](https://parasj.github.io/contracode/))
 
 ### **Learning functionality-based representations of programs**
 
-<img src="https://parasj.github.io/contracode/assets/img/conceptual_ordered.png">
+<a href="https://parasj.github.io/contracode/"><img src="https://parasj.github.io/contracode/assets/img/conceptual_ordered.png"></a>
 
 Machine-aided programming tools such as type predictors and code summarizers are increasingly learning-based. However, most code representation learning approaches rely on supervised learning with task-specific annotated datasets. **We propose Contrastive Code Representation Learning (ContraCode), a self-supervised algorithm for learning task-agnostic semantic representations of programs via contrastive learning.**
 
