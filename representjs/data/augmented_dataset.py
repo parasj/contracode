@@ -73,3 +73,36 @@ class PadCollateWrapper:
             data = pad_sequence(data_list, padding_value=self.pad_id, batch_first=self.batch_first)
             label = pad_sequence(label_list, padding_value=self.pad_id, batch_first=self.batch_first)
             return data, label
+
+
+if __name__ == "__main__":
+    from representjs import CSNJS_DIR
+
+    # from pretrain import DEFAULT_CSNJS_TRAIN_FILEPATH
+    DEFAULT_CSNJS_TRAIN_FILEPATH = (
+        "/home/ajay/coderep/representjs/data/codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl"
+    )
+    from data.jsonl_dataset import get_csnjs_dataset
+
+    SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
+    train_dataset = get_csnjs_dataset(DEFAULT_CSNJS_TRAIN_FILEPATH, label_mode="none", limit_size=100)
+    train_augmentations = [
+        {"fn": "rename_variable"},
+        {"fn": "insert_var_declaration"},
+        {"fn": "terser"},
+        {"fn": "sample_lines"},
+    ]
+    test_transforms = ComposeTransform(
+        [
+            NodeServerTransform(train_augmentations),
+            # WindowLineCropTransform(6),
+            NumericalizeTransform(SPM_UNIGRAM_FILEPATH, 0.0, 1024),
+            CanonicalizeKeysTransform(data="function"),
+        ]
+    )
+    augmented_dataset = AugmentedJSDataset(train_dataset, test_transforms, contrastive=True)
+    for i, data in enumerate(augmented_dataset[0:10]):
+        logger.info("Program {}".format(i))
+        logger.info("Got data object: \n" + pprint.pformat(data))
+        print()
+        print()

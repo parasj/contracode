@@ -167,3 +167,18 @@ def get_collate_fn(pad_id, no_type_id):
 
     return collate_fn
 
+
+if __name__ == "__main__":
+    # "../DeepTyper/data/test-outputs-gold.json",
+    dataset = DeepTyperDataset(
+        "/home/ajay/coderep/DeepTyper/data/test_projects_gold_filtered.json",
+        "../DeepTyper/data/target_wl",
+        "data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
+        max_length=-1,
+        split_source_targets_by_tab=True
+    )
+    max_ids, max_labels = 0, 0
+    for i, (subword_ids, label_segments) in enumerate(dataset):
+        max_ids = max(len(subword_ids), max_ids)
+        max_labels = max(len(label_segments), max_labels)
+        print(f"Dataset {i} max_ids {max_ids}, max_labels {max_labels}")
