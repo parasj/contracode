@@ -4,7 +4,7 @@ import os
 from tqdm import tqdm
 
 REMOTE_BASE = "https://contrastive-code.s3.amazonaws.com"
-SHARED_BASE = Path("/tmp/contrastive_data/").resolve()
+SHARED_BASE = Path("/work/paras/data/").resolve()
 LOCAL_BASE = (Path(__file__).parent.parent / "data").resolve()
 
 
@@ -37,6 +37,9 @@ if __name__ == "__main__":
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", False))
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", False))
     cmds.extend(dl_cmds("codesearchnet_javascript/javascript_augmented.pickle.gz", False))
+    cmds.extend(dl_cmds("augmented_data/augmented_minus_compression.jsonl.gz", False))
+    cmds.extend(dl_cmds("augmented_data/augmented_minus_identifier.jsonl.gz", False))
+    cmds.extend(dl_cmds("augmented_data/augmented_minus_line_subsampling.jsonl.gz", False))
 
     print("\n".join(cmds))
 
