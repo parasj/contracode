@@ -60,7 +60,18 @@ python representjs/pretrain_distributed.py pretrain_transformer_hybrid \
 
 ## Finetuning and evaluating on downstream type prediction task
 
-Commands to reproduce key type prediction results are provided below.
+Commands to reproduce key type prediction results are provided below. In you are using pretraining checkpoints from the released checkpoints in the Google Drive, these commands should work without modification. However, if you pretrained the model from scratch, you will need to update the `--resume_path` argument.
+
+<details>
+<summary>Checkpoint paths if you pre-trained a model from scratch:</summary>
+<br>
+
+* `data/ft/ckpt_lstm_ft_types.pth` becomes `data/runs/types_contracode/ckpt_best.pth`
+* `data/pretrain/ckpt_transformer_ft_types.pth` becomes `data/runs/types_contracode_transformer/ckpt_best.pth`
+* `data/ft/ckpt_transformer_hybrid_ft_types.pth` becomes `data/runs/types_hybrid_transformer/ckpt_best.pth`
+* `data/ft/ckpt_transformer_ft_names.pth` becomes `data/runs/names_ft/ckpt_best.pth`
+
+</details>
 
 ### Type prediction with an LSTM (pretrained with ContraCode)
 *Evaluate* our finetuned Bidirectional LSTM (Table 2, `DeepTyper d=512 + ContraCode; MoCo (hidden), 20k`):
