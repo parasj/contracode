@@ -26,7 +26,9 @@ setup(
         "regex",
         "sacremoses",
         "wandb",
-        "loguru"
+        "loguru",
+        "transformers>=3.1.0",
+        "tokenizers"
     ],
     extras_require={"test": ["pytest"]}
 )

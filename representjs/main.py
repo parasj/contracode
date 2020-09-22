@@ -327,6 +327,8 @@ def train(
     elif model_type == "lstm":
         model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
         logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
+    elif model_type == "huggingface_transformer":
+        model = 
 
     # Load checkpoint
     if resume_path:
