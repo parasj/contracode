@@ -10,24 +10,31 @@ setup(
         "graphviz",
         "jsbeautifier",
         "jsonlines",
-        "matplotlib",
-        "numpy",
-        "pandas",
         "pyjsparser",
-        "pytorch-lightning",
-        "seaborn",
-        "sentencepiece",
-        "torch",
-        "torchtext",
         "tqdm",
         "requests",
         "regex",
-        "sacremoses",
-        "wandb",
         "loguru",
+        "pyarrow",
+
+        # Data
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "seaborn",
+
+        # PyTorch
+        "pytorch-lightning",
+        "torch",
+        "torchtext",
+        "wandb",
+
+        # NLP dependencies
+        "sentencepiece",
+        "sacremoses",
         "transformers>=3.1.0",
         "tokenizers",
-        "pyarrow"
+        "datasets",
     ],
     extras_require={"test": ["pytest"]}
 )
