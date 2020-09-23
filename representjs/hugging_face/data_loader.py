@@ -1,12 +1,13 @@
 from typing import Iterable
 
 import pandas as pd
-from torch.utils.data import Dataset
 from transformers.data.datasets.language_modeling import TextDataset
 from transformers import BertTokenizerFast
 
-class PretrainingDataset(TextDataset):
-    def __init__(self, shuffle=False):
+
+class BERTPretrainingDataset(TextDataset):
+    def __init__(self, tokenizer, file_path: str, block_size: int, shuffle=False):
+        super().__init__(tokenizer, file_path, block_size)
         self.tokenizer = self.make_tokenizer()
         self.data_df = pd.read_parquet('data/codesearchnet_javascript/augmented_data.parquet')
         if shuffle:
@@ -22,9 +23,8 @@ class PretrainingDataset(TextDataset):
         self.tokenizer.encode_batch(data_batch)
 
     @staticmethod
-    def make_tokenizer(path="huggingface/8k_bpe/8k_bpe-vocab.txt"):
+    def make_tokenizer(path="data/huggingface/8k_bpe/8k_bpe-vocab.txt"):
         tok = BertTokenizerFast(path, clean_text=True, lowercase=False, strip_accents=True)
-        tok.set_truncation_and_padding(PaddingStrategy.DO_NOT_PAD, max_length=512)
         return tok
 
 
