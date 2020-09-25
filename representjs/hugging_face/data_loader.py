@@ -1,5 +1,7 @@
 from typing import Iterable
 
+from representjs import DATA_DIR
+
 import pandas as pd
 from transformers.data.datasets.language_modeling import TextDataset
 from transformers import BertTokenizerFast
@@ -29,6 +31,5 @@ class BERTPretrainingDataset(TextDataset):
 
 
 if __name__ == "__main__":
-    tok = make_tokenizer()
-    print(tok.encode("public static void main(String[] args)"))
-    print(tok.encode("public static void main(String[] args)").tokens)
+    train_df = pd.from_pickle(DATA_DIR / "hf_data" / "augmented_pretrain_df.train.pickle.gz")
+    

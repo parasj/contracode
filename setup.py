@@ -32,7 +32,7 @@ setup(
         # NLP dependencies
         "sentencepiece",
         "sacremoses",
-        "transformers>=3.1.0",
+        "transformers>=3.2.0",
         "tokenizers",
         "datasets",
     ],

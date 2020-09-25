@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 from tokenizers import BertWordPieceTokenizer
 
@@ -26,3 +27,4 @@ if __name__ == "__main__":
         "[URL]"
     ])
     tokenizer.save_model(args.out_path, args.out_name)
+    tokenizer.save(os.path.join(args.out_path, "vocab.json"))
