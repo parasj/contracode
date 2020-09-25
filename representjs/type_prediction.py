@@ -246,6 +246,8 @@ def train(
         epoch = checkpoint["epoch"]
         global_step = checkpoint["global_step"]
         min_eval_metric = checkpoint["min_eval_metric"]
+        for _ in range(global_step):
+            scheduler.step()
 
     # Evaluate initial metrics
     logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
