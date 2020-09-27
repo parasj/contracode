@@ -7,7 +7,11 @@ from dataclasses import dataclass, field
 import logging
 import math
 import os
+import pandas as pd
 from typing import Optional
+import torch
+import torch.nn as nn
+from torch.utils.data.dataset import Dataset
 
 from transformers import (
     MODEL_WITH_LM_HEAD_MAPPING,
@@ -114,22 +118,27 @@ class DataTrainingArguments:
         metadata={"help": "Overwrite the cached training and evaluation sets"},
     )
 
+
+class BERTPretokenizedPretrainingDataset(Dataset):
+    def __init__(self, data_path: str, shuffle=False):
+        super().__init__()
+        logger.info("Loading data")
+        self.data_df = pd.read_pickle('/data/ajay/contracode/data/hf_data/merged_tok.pickle.gz')
+        logger.info("Loaded data")
+
+    def __len__(self):
+        return len(self.data_df)
+
+    def __getitem__(self, i):
+        return torch.tensor(self.data_df["toks"][i], dtype=torch.long)
+
+
 def get_dataset(
     args: DataTrainingArguments,
-    tokenizer: PreTrainedTokenizer,
     evaluate: bool = False,
-    cache_dir: Optional[str] = None,
 ):
     file_path = args.eval_data_file if evaluate else args.train_data_file
-    if args.line_by_line:
-        return LineByLineTextDataset(tokenizer=tokenizer, file_path=file_path, block_size=args.block_size)
-    else:
-        return TextDataset(
-            tokenizer=tokenizer,
-            file_path=file_path,
-            block_size=args.block_size,
-            overwrite_cache=args.overwrite_cache,
-        )
+    return BERTPretokenizedPretrainingDataset(file_path)
 
 
 def main():
@@ -222,24 +231,16 @@ def main():
             "--mlm flag (masked language modeling)."
         )
 
-    if data_args.block_size <= 0:
-        data_args.block_size = tokenizer.max_len
-        # Our input block size will be the max possible for the model
-    else:
-        data_args.block_size = min(data_args.block_size, tokenizer.max_len)
-
     # Get datasets
     logging.info("Loading train dataset")
     train_dataset = (
-        get_dataset(data_args, tokenizer=tokenizer, cache_dir=model_args.cache_dir) if training_args.do_train else None
+        get_dataset(data_args) if training_args.do_train else None
     )
     logging.info("Loading eval dataset")
     eval_dataset = (
         get_dataset(
             data_args,
-            tokenizer=tokenizer,
             evaluate=True,
-            cache_dir=model_args.cache_dir,
         )
         if training_args.do_eval
         else None
