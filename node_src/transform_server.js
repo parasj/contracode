@@ -65,6 +65,9 @@ const server = http.createServer((req, res) => {
         const replyString = JSON.stringify(
             data.map(x => javascriptAugmenter.transform(x['src'], x['augmentations'])));
         res.end(replyString);
+        // console.log("Body", body);
+        // console.log("Reply", replyString);
+        // console.log();
     });
 });
 

@@ -139,8 +139,11 @@ def train(
     weight_decay: float = 0,
     warmup_steps: int = 5000,
     num_steps: int = 200000,
-    # Loss
+    # Augmentations
     subword_regularization_alpha: float = 0,
+    sample_lines_prob: float = 0,
+    sample_lines_prob_keep_line: float = 0.9,
+    # Loss
     ignore_any_loss: bool = False,
     # Computational
     use_cuda: bool = True,
@@ -175,8 +178,18 @@ def train(
 
     # Create training dataset and dataloader
     logger.info(f"Training data path {train_filepath}")
+    if sample_lines_prob > 0:
+        augmentations = [
+            {"fn": "sample_lines", "options": {"prob": sample_lines_prob, "prob_keep_line": sample_lines_prob_keep_line}},
+        ] 
+        program_mode = "augmentation"
+    else:
+        augmentations = None
+        program_mode = "identity"
     train_dataset = DeepTyperDataset(
-        train_filepath, type_vocab_filepath, spm_filepath, max_length=max_seq_len, subword_regularization_alpha=subword_regularization_alpha
+        train_filepath, type_vocab_filepath, spm_filepath, max_length=max_seq_len,
+        subword_regularization_alpha=subword_regularization_alpha,
+        augmentations=augmentations, program_mode=program_mode
     )
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = torch.utils.data.DataLoader(
@@ -246,8 +259,6 @@ def train(
         epoch = checkpoint["epoch"]
         global_step = checkpoint["global_step"]
         min_eval_metric = checkpoint["min_eval_metric"]
-        for _ in range(global_step):
-            scheduler.step()
 
     # Evaluate initial metrics
     logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")

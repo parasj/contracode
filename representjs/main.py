@@ -281,7 +281,8 @@ def train(
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
 
     train_augmentations = [
-        {"fn": "sample_lines", "line_length_pct": 0.5},
+        {"fn": "sample_lines", "line_length_pct": 0.5},  # WARN: this is a no-op because the arguments for sample_lines are prob and prob_keep_line
+                                                         # Also need to have options under an "options" key
         {"fn": "insert_var_declaration", "prob": 0.5},
         {"fn": "rename_variable", "prob": 0.5},
     ]
@@ -327,6 +328,8 @@ def train(
     elif model_type == "lstm":
         model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
         logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
+    elif model_type == "huggingface_transformer":
+        model = 
 
     # Load checkpoint
     if resume_path:
