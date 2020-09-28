@@ -24,6 +24,7 @@ setup(
         "seaborn",
 
         # PyTorch
+        "apex @ git+https://github.com/NVIDIA/apex.git#egg=apex",  # apex does not encode dependency on torch
         "pytorch-lightning",
         "torch",
         "torchtext",
