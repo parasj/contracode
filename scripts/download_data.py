@@ -4,7 +4,7 @@ import os
 
 from tqdm import tqdm
 
-REMOTE_BASE = "https://people.eecs.berkeley.edu/~paras/datasets" # "https://contrastive-code.s3.amazonaws.com"
+REMOTE_BASE = "https://contrastive-code.s3.amazonaws.com" # "https://people.eecs.berkeley.edu/~paras/datasets"
 SHARED_BASE = Path("/work/paras/contracode/data").resolve()
 DEFAULT_LOCAL_BASE = str((Path(__file__).parent.parent / "data").resolve())
 
@@ -39,8 +39,7 @@ if __name__ == "__main__":
 
     cmds = []
     if not args.skip_hf:
-        cmds.extend(dl_cmds("hf_data/augmented_pretrain_df.train.txt.gz", True, LOCAL_PATH))
-        cmds.extend(dl_cmds("hf_data/augmented_pretrain_df.test.txt.gz", True, LOCAL_PATH))
+        cmds.extend(dl_cmds("hf_data/feather_tok/feather_tok.tar.gz", True, LOCAL_PATH))
 
     if not args.skip_csn:
         cmds.extend(dl_cmds("codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", False, LOCAL_PATH))

@@ -4,11 +4,16 @@
 # We now keep distinct sets of args, for a cleaner separation of concerns.
 
 from dataclasses import dataclass, field
+import gc
+import glob
 import logging
 import math
 import os
 import pandas as pd
+import pyarrow.feather as feather
 from typing import Optional
+from tqdm.contrib.concurrent import thread_map
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 from torch.utils.data.dataset import Dataset
@@ -120,17 +125,23 @@ class DataTrainingArguments:
 
 
 class BERTPretokenizedPretrainingDataset(Dataset):
-    def __init__(self, data_path: str, shuffle=False):
+    def __init__(self, data_path: str, shuffle=False, train=True, max_len=500):
         super().__init__()
-        logger.info("Loading data")
-        self.data_df = pd.read_pickle('/data/ajay/contracode/data/hf_data/merged_tok.pickle.gz')
-        logger.info("Loaded data")
+        logger.info("Loading data from {}".format(data_path))
+        gc.disable()
+        files = glob.glob(f'{data_path}*')
+        logger.info("File list {}".format(', '.join(files)))
+        dfs = thread_map(feather.read_feather, files, max_workers=16)
+        self.data_df = pd.concat(dfs)
+        gc.enable()
+        logger.info(f"Loaded dataset from {data_path} with {len(self.data_df)} samples")
+        self.max_len = max_len
 
     def __len__(self):
         return len(self.data_df)
 
     def __getitem__(self, i):
-        return torch.tensor(self.data_df["toks"][i], dtype=torch.long)
+        return torch.tensor(self.data_df["toks"][i][:self.max_len], dtype=torch.long)
 
 
 def get_dataset(
@@ -224,6 +235,7 @@ def main():
 
     logging.info("Resizing embeddings")
     model.resize_token_embeddings(len(tokenizer))
+    print(len(tokenizer.get_vocab()), len(tokenizer))
 
     if config.model_type in ["bert", "roberta", "distilbert", "camembert"] and not data_args.mlm:
         raise ValueError(

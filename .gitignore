@@ -1,6 +1,7 @@
 /data/codesearchnet_javascript
 /data/hf_data
 /data/runs
+/data/tensorboard
 /wandb/
 
 # Editors

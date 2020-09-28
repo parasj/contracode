@@ -4,8 +4,10 @@
 <pad>
 <unk>
 <mask>
-[CLS]
+[UNK]
 [SEP]
+[PAD]
+[CLS]
 [MASK]
 [EOL]
 [URL]
@@ -7996,5 +7998,3 @@ mass
 getUTC
 ##EAR
 scrollLeft
-##ARY
-192

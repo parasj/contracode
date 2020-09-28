@@ -24,7 +24,9 @@ if __name__ == "__main__":
         "[SEP]",
         "[MASK]",
         "[EOL]",
-        "[URL]"
+        "[URL]",
+        "[PAD]",
+        "[UNK]"
     ])
     tokenizer.save_model(args.out_path, args.out_name)
     tokenizer.save(os.path.join(args.out_path, "vocab.json"))
