@@ -1,3 +1,4 @@
+from pathlib import Path
 import os
 import random
 
@@ -119,6 +120,7 @@ def train(
     num_workers=1,
     max_seq_len=1024,
     max_eval_seq_len=1024,
+    run_dir=RUN_DIR,
     # Model
     resume_path: str = "",
     pretrain_resume_path: str = "",
@@ -139,8 +141,11 @@ def train(
     weight_decay: float = 0,
     warmup_steps: int = 5000,
     num_steps: int = 200000,
-    # Loss
+    # Augmentations
     subword_regularization_alpha: float = 0,
+    sample_lines_prob: float = 0,
+    sample_lines_prob_keep_line: float = 0.9,
+    # Loss
     ignore_any_loss: bool = False,
     # Computational
     use_cuda: bool = True,
@@ -151,7 +156,9 @@ def train(
     np.random.seed(seed)
     random.seed(seed)
 
-    run_dir = RUN_DIR / run_name
+    if run_dir != RUN_DIR:
+        run_dir = Path(run_dir)
+    run_dir = run_dir / run_name
     run_dir.mkdir(exist_ok=True, parents=True)
     logger.add(str((run_dir / "train.log").resolve()))
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
@@ -175,8 +182,18 @@ def train(
 
     # Create training dataset and dataloader
     logger.info(f"Training data path {train_filepath}")
+    if sample_lines_prob > 0:
+        augmentations = [
+            {"fn": "sample_lines", "options": {"prob": sample_lines_prob, "prob_keep_line": sample_lines_prob_keep_line}},
+        ] 
+        program_mode = "augmentation"
+    else:
+        augmentations = None
+        program_mode = "identity"
     train_dataset = DeepTyperDataset(
-        train_filepath, type_vocab_filepath, spm_filepath, max_length=max_seq_len, subword_regularization_alpha=subword_regularization_alpha
+        train_filepath, type_vocab_filepath, spm_filepath, max_length=max_seq_len,
+        subword_regularization_alpha=subword_regularization_alpha,
+        augmentations=augmentations, program_mode=program_mode
     )
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = torch.utils.data.DataLoader(
@@ -190,7 +207,7 @@ def train(
         type_vocab_filepath,
         spm_filepath,
         max_length=max_eval_seq_len,
-        subword_regularization_alpha=subword_regularization_alpha,
+        subword_regularization_alpha=0,
         split_source_targets_by_tab=eval_filepath.endswith(".json")
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")

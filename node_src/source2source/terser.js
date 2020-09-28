@@ -13,10 +13,14 @@ module.exports = (js_src, {
     prob = 0.5, prob_compress = 0.5, prob_mangle = 0.1, prob_remove_comments = 0.5,
     prob_keep_fnames = 0.5, prob_keep_classnames = 0.5, prob_compress_unsafe = 0.5, prob_compress_arguments = 0.5,
     prob_compress_booleans_as_integers = 0.5, prob_compress_drop_console = 0.5, prob_compress_hoist_vars = 0.5,
-    prob_compress_dead_code = 0.5
+    prob_compress_dead_code = 0.5, module = false
 }) => {
+    console.log("terser")
     if (Math.random() < prob) {
+        console.log("terser applying")
+        options["module"] = module;
         if (Math.random() < prob_compress) {
+            console.log("compressing")
             options["compress"] = {
                 "unsafe": (Math.random() < prob_compress_unsafe),
                 "arguments": (Math.random() < prob_compress_arguments),
@@ -50,7 +54,11 @@ module.exports = (js_src, {
         // options["compress"] = {"drop_console": true};
         // options["mangle"] = true;
         // options["output"]["beautify"] = false;
-        return Terser.minify(js_src, options).code;
+        var output = Terser.minify(js_src, options);
+        console.log("Orig", js_src);
+        console.log("----->");
+        console.log("Transformed", output);
+        return output.code
     }
 
     return js_src;

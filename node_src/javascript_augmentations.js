@@ -20,7 +20,11 @@ class JavascriptAugmentations {
     }
 
     srcToAst(jsSrc) {
-        return parser.parse(jsSrc, {sourceType: "module", plugins: ["jsx", "es2015", "es6", "flow"], errorRecovery: true});
+        try {
+            return parser.parse(jsSrc, {sourceType: "module", plugins: ["jsx", "es2015", "es6", "flow"], errorRecovery: true});
+        } catch (e) {
+            return parser.parse(jsSrc, {sourceType: "module", plugins: ["jsx", "es2015", "es6", "typescript"], errorRecovery: true});
+        }
     }
 
     astToSrc(ast) {
@@ -58,6 +62,7 @@ class JavascriptAugmentations {
         let data = jsSrc;
 
         for (const transformationObj of transformationList) {
+            // console.log("javascript_augmentations.transform", transformationObj)
             const transformation = transformationObj['fn'];
             const options = transformationObj['options'] || {};
             try {
@@ -71,7 +76,8 @@ class JavascriptAugmentations {
                     is_ast = is_ast_new;
                 }
             } catch (e) {
-                // console.error("Could not transform object!", transformationObj, ", got error ", e);
+                console.error("Could not transform object!", transformationObj, ", got error ", e);
+                console.log(jsSrc)
             }
         }
 

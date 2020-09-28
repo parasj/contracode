@@ -41,3 +41,14 @@ def normalize_program(fn: str):
     fn = _newline_regex.sub(r" [EOL]", fn)
     fn = _whitespace_regex.sub(" ", fn)
     return fn
+
+
+def EncodeAsIds(sp, alpha, prog):
+    # Encode as ids with sentencepiece
+    if alpha:
+        # using subword regularization: https://arxiv.org/pdf/1804.10959.pdf
+        # NOTE: what is the second argument here (-1)?
+        return sp.SampleEncodeAsIds(prog, -1, alpha)
+
+    # using the best decoding
+    return sp.EncodeAsIds(prog)
