@@ -32,6 +32,7 @@ module.exports = (js_src, {prob = 0.25, prob_keep_line = 0.9}) => {
             }
         }
         out_lines.push(lines[n_lines - 1]);
+        console.log("sampled", out_lines.length, "lines /", n_lines);
         return out_lines.join("\n");
     } else {
         return js_src;

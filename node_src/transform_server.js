@@ -67,7 +67,6 @@ const server = http.createServer((req, res) => {
         res.end(replyString);
         // console.log("Body", body);
         // console.log("Reply", replyString);
-        // console.log();
     });
 });
 

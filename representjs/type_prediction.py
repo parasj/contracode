@@ -1,3 +1,4 @@
+from pathlib import Path
 import os
 import random
 
@@ -119,6 +120,7 @@ def train(
     num_workers=1,
     max_seq_len=1024,
     max_eval_seq_len=1024,
+    run_dir=RUN_DIR,
     # Model
     resume_path: str = "",
     pretrain_resume_path: str = "",
@@ -154,7 +156,9 @@ def train(
     np.random.seed(seed)
     random.seed(seed)
 
-    run_dir = RUN_DIR / run_name
+    if run_dir != RUN_DIR:
+        run_dir = Path(run_dir)
+    run_dir = run_dir / run_name
     run_dir.mkdir(exist_ok=True, parents=True)
     logger.add(str((run_dir / "train.log").resolve()))
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
@@ -203,7 +207,7 @@ def train(
         type_vocab_filepath,
         spm_filepath,
         max_length=max_eval_seq_len,
-        subword_regularization_alpha=subword_regularization_alpha,
+        subword_regularization_alpha=0,
         split_source_targets_by_tab=eval_filepath.endswith(".json")
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")

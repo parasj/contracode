@@ -53,49 +53,44 @@ def _tokenize(deeptyper_line, sp, id_to_target, target_to_id, max_length, split_
     js_tokens_with_markers = []
     for tok, label in zip(js_tokens, labels):
         if label != "O":
-            # Inject label with stripped $ into tok
-            # label_stripped = label.strip("$").replace("[]", "_ARRTYPE_")
             label = target_to_id[label]
-            tok = f"{TYPED_MARKER_START}{tok}{TYPED_MARKER_MID}{label}{TYPED_MARKER_END}"
+            if program_mode == "augmentation":
+                # Inject label into tok
+                if "\n" in tok:
+                    tok.replace("\n", "")
+                tok = f"{TYPED_MARKER_START}{tok}{TYPED_MARKER_MID}{label}{TYPED_MARKER_END}"
+            else:
+                tok = f"{TYPED_MARKER_START}{tok}{TYPED_MARKER_END}"
         js_tokens_with_markers.append(tok)
 
-    # Beautify program
+    # Beautify program. Have to beautify before augmenting for sample lines to do anything (deeptyper programs are on one line as they are tokenized)
     js_beautified = jsbeautifier.beautify(" ".join(js_tokens_with_markers))
 
     # NOTE: "contrastive" program mode not supported
     if program_mode == "augmentation":
+        # Remove whitespace including newlines from inside labeled tokens introduced by beautification.
+        # That way line subsampling is all-or-nothing (doesn't delete part of a labeled segment)
+        name_re = f"{TYPED_MARKER_START}(.+?){TYPED_MARKER_MID}([0-9]+){TYPED_MARKER_END}"
+        def _remove_newlines_in_segment(m):
+            name, label = m.group(1), m.group(2)
+            tok = TYPED_MARKER_START + name.strip() + TYPED_MARKER_MID + label + TYPED_MARKER_END
+            return tok
+        js_beautified = re.sub(name_re, _remove_newlines_in_segment, js_beautified, flags=re.DOTALL)
+
         # Augment code by calling _augment_server
-        assert augmentations
+        # assert augmentations
         transform_payload = [dict(src=js_beautified, augmentations=augmentations)]
-        transformed = _augment_server(transform_payload)[0]
+        js_beautified = _augment_server(transform_payload)[0]
 
         # Extract labels from program names. Match across lines because train_dataset[99] has a } with type
         # annotation and the beautifier inserts a newline right after it.
-        name_re = f"{TYPED_MARKER_START}(.+?){TYPED_MARKER_MID}(.+?){TYPED_MARKER_END}"
-        matches = re.findall(name_re, transformed, flags=re.DOTALL)
+        matches = re.findall(name_re, js_beautified, flags=re.DOTALL)
         labels = [id_to_target[int(label)] for var, label in matches]
-
-        # labels = [f"${label}$" for var, label in matches]
-
-        # labels = []
-        # for var, label in matches:
-        #     label = f"${label}$"
-        #     labels.append(label)
-
-        # print(js_beautified)
-        # print("-->")
-        # print(transformed)
-        # print(matches)
-        # import IPython
-        # IPython.embed()
-        # import sys
-        # sys.exit()
 
         # Remove labels from program
         assert len(matches) == len(labels)
-        transformed, num_labels = re.subn(name_re, TYPED_MARKER_START + r"\1" + TYPED_MARKER_END, transformed, flags=re.DOTALL)
+        js_beautified, num_labels = re.subn(name_re, TYPED_MARKER_START + r"\1" + TYPED_MARKER_END, js_beautified, flags=re.DOTALL)
         assert num_labels == len(labels)
-        js_beautified = transformed
 
     # Normalize program
     js_beautified_norm = normalize_program(js_beautified)
@@ -235,23 +230,21 @@ if __name__=="__main__":
         max_length=2048,
         subword_regularization_alpha=0.0,
         augmentations=[
-            # {"fn": "sample_lines", "options": {"prob": 0.25, "prob_keep_line": 0.9}},
+            {"fn": "sample_lines", "options": {"prob": 0.25, "prob_keep_line": 0.9}},
             # {"fn": "insert_var_declaration", "options": {"prob": 0.5}},
             # {"fn": "rename_variable", "options": {"prob": 1.0}},
-            {"fn": "terser", "options": {"prob": 0.5, "prob_mangle": 0.0, "prob_compress_booleans_as_integers": 0.0, "module": True}}
+            # {"fn": "terser", "options": {"prob": 0.5, "prob_mangle": 0.0, "prob_compress_booleans_as_integers": 0.0, "module": True}}
         ],
         program_mode="augmentation"
     )
 
-    for it in range(5):
-        train_dataset[7]
-        # print(train_dataset[99])
-        print("-----")
+    # for it in range(5):
+    #     print(train_dataset[7])
+    #     print("-----")
 
-    # for i in range(len(train_dataset)):
-    #     item = train_dataset[i]
-    #     versions = set()
-    #     for it in range(10):
-    #         # print("item", len(item[0]))
-    #         versions.add(len(item[0]))
-        # print(f"dataset[{i}] has {len(versions)} alternatives")
+    for i in range(len(train_dataset)):
+        versions = set()
+        for it in range(10):
+            item = train_dataset[i]
+            versions.add(len(item[0]))
+        print(f"dataset[{i}] has {len(versions)} / 10 alternatives")
