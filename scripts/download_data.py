@@ -1,14 +1,15 @@
+import argparse
 from pathlib import Path
 import os
 
 from tqdm import tqdm
 
-REMOTE_BASE = "https://contrastive-code.s3.amazonaws.com"
-SHARED_BASE = Path("/work/paras/data/").resolve()
-LOCAL_BASE = (Path(__file__).parent.parent / "data").resolve()
+REMOTE_BASE = "https://contrastive-code.s3.amazonaws.com" # "https://people.eecs.berkeley.edu/~paras/datasets"
+SHARED_BASE = Path("/work/paras/contracode/data").resolve()
+DEFAULT_LOCAL_BASE = str((Path(__file__).parent.parent / "data").resolve())
 
 
-def dl_cmds(dataset_path: str, extract=False):
+def dl_cmds(dataset_path: str, extract=False, LOCAL_BASE=DEFAULT_LOCAL_BASE):
     remote_path = os.path.join(REMOTE_BASE, dataset_path)
     cache_path = (SHARED_BASE / dataset_path).resolve()
     local_path = (LOCAL_BASE / dataset_path).resolve()
@@ -28,18 +29,30 @@ def dl_cmds(dataset_path: str, extract=False):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Download ContraCode data')
+    parser.add_argument('path', type=str, default=DEFAULT_LOCAL_BASE, help='Path to save output to')
+    parser.add_argument('--skip-csn', action='store_true')
+    parser.add_argument('--skip-hf', action='store_true')
+    args = parser.parse_args()
+
+    LOCAL_PATH = Path(args.path)
+
     cmds = []
-    # cmds.extend(dl_cmds("js150k/data.tar.gz"))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", False))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_test_0.jsonl.gz", False))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_valid_0.jsonl.gz", False))
-    cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", True))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", False))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", False))
-    cmds.extend(dl_cmds("codesearchnet_javascript/javascript_augmented.pickle.gz", False))
-    cmds.extend(dl_cmds("augmented_data/augmented_minus_compression.jsonl.gz", False))
-    cmds.extend(dl_cmds("augmented_data/augmented_minus_identifier.jsonl.gz", False))
-    cmds.extend(dl_cmds("augmented_data/augmented_minus_line_subsampling.jsonl.gz", False))
+
+    if not args.skip_hf:
+        cmds.extend(dl_cmds("hf_data/feather_tok/feather_tok.tar.gz", True, LOCAL_PATH))
+
+    if not args.skip_csn:
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", False, LOCAL_PATH))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_test_0.jsonl.gz", False, LOCAL_PATH))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_valid_0.jsonl.gz", False, LOCAL_PATH))
+        cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", True, LOCAL_PATH))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", False, LOCAL_PATH))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", False, LOCAL_PATH))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_augmented.pickle.gz", False, LOCAL_PATH))
+        cmds.extend(dl_cmds("augmented_data/augmented_minus_compression.jsonl.gz", False))
+        cmds.extend(dl_cmds("augmented_data/augmented_minus_identifier.jsonl.gz", False))
+        cmds.extend(dl_cmds("augmented_data/augmented_minus_line_subsampling.jsonl.gz", False))
 
     print("\n".join(cmds))
 
