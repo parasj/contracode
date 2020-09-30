@@ -205,6 +205,14 @@ def main():
         config = CONFIG_MAPPING[model_args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
 
+    print("Config before overwrite max_position_embeddings:", config)
+    config.max_position_embeddings = 4096
+    config.num_hidden_layers = 6
+    config.num_attention_heads = 8
+    config.hidden_size = 512
+    config.intermediate_size = 2048
+    print("Config after overwrite max_position_embeddings:", config)
+
     # if model_args.tokenizer_name:
     #     tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, cache_dir=model_args.cache_dir)
     # elif model_args.model_name_or_path:

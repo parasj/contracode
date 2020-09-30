@@ -38,7 +38,6 @@ if __name__ == "__main__":
     LOCAL_PATH = Path(args.path)
 
     cmds = []
-
     if not args.skip_hf:
         cmds.extend(dl_cmds("hf_data/feather_tok/feather_tok.tar.gz", True, LOCAL_PATH))
 
