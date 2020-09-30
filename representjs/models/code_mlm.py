@@ -27,6 +27,9 @@ class CodeMLM(nn.Module):
 
         self.head = nn.Sequential(nn.Linear(self.head_in, d_model), nn.ReLU(), nn.LayerNorm(d_model))
 
+    def embed(self, im):
+        return self.encoder(im)
+        
     def forward(self, im, lengths):
         features = self.encoder(im, lengths)  # L x B x D=head_in
         L, B, D = features.shape
