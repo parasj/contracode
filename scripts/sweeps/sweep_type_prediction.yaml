@@ -24,7 +24,13 @@ parameters:
     value: encoder_q
   num_epochs:
     value: 30
-  
+  no_output_attention:
+    value: True
+  encoder_type:
+    value: lstm
+  n_encoder_layers:
+    value: 2
+
   # parameters to sweep
   batch_size:
     distribution: categorical
@@ -32,6 +38,7 @@ parameters:
     - 8
     - 16
     - 32
+    - 64
   lr:
     distribution: categorical
     values:
