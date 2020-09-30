@@ -60,4 +60,4 @@ def embed_coco(checkpoint, data_path, spm_filepath=DEFAULT_SPM_UNIGRAM_FILEPATH,
         
 
 if __name__ == "__main__":
-    fire.Fire({"embed_coco": embed_coco})
+    fire.Fire({"embed_coco": embed_coco, "embed_bert": embed_bert})

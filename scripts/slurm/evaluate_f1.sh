@@ -2,7 +2,7 @@
 #SBATCH --job-name=evaluate_f1
 #SBATCH --output=/home/eecs/paras/slurm/coderep/%j_evaluate_f1.log
 #SBATCH --ntasks=1
-#SBATCH --mem=16000
+#SBATCH --mem=32000
 #SBATCH --time=3:00:00
 #SBATCH --exclude=atlas,blaze,r16
 #SBATCH --gres=gpu:1
