@@ -130,6 +130,9 @@ def train(
     encoder_type: str = "transformer",
     n_encoder_layers: int = 6,
     d_model: int = 512,
+    # Output layer hparams
+    d_out_projection: int = 512,
+    n_hidden_output: int = 1,
     # Optimization
     num_epochs: int = 100,
     save_every: int = 2,
@@ -265,13 +268,19 @@ def train(
         global_step = checkpoint["global_step"]
         min_eval_metric = checkpoint["min_eval_metric"]
 
+    # Eval metric history
+    max_eval_metrics = {}
+
     # Evaluate initial metrics
     logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
     eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
+        max_eval_metrics[metric] = value
     eval_metrics["epoch"] = epoch
     wandb.log(eval_metrics, step=global_step)
+    wandb.log({k + "_max": v for k, v in max_eval_metrics.items()}, step=global_step)
+
 
     for epoch in tqdm.trange(epoch + 1, num_epochs + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
@@ -324,8 +333,10 @@ def train(
             model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
         for metric, value in eval_metrics.items():
             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
+            max_eval_metrics[metric] = max(value, max_eval_metrics[metric])
         eval_metrics["epoch"] = epoch
         wandb.log(eval_metrics, step=global_step)
+        wandb.log({k + "_max": v for k, v in max_eval_metrics.items()}, step=global_step)
 
         # Save checkpoint
         if save_every and epoch % save_every == 0 or eval_metric < min_eval_metric:
@@ -362,6 +373,9 @@ def eval(
     encoder_type: str = "transformer",
     n_encoder_layers: int = 6,
     d_model: int = 512,
+    # Output layer hparams
+    d_out_projection: int = 512,
+    n_hidden_output: int = 1,
     # Optimization
     batch_size=16,
     # Loss
@@ -408,7 +422,8 @@ def eval(
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
+        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model,
+        d_out_projection=d_out_projection, n_hidden_output=n_hidden_output)
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
