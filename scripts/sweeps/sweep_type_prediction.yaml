@@ -1,5 +1,8 @@
 program: representjs/sweep_type_prediction.py
-method: random
+method: bayes
+metric:
+  name: eval/acc@1_max
+  goal: maximize
 parameters:
   # configurable parameters
   run_name:
@@ -38,28 +41,29 @@ parameters:
     - 8
     - 16
     - 32
-    - 64
   lr:
-    distribution: categorical
-    values:
-    - 0.0005
-    - 0.001
-    - 0.005
+    distribution: uniform
+    min: 0.0005
+    max: 0.01
   warmup_steps:
-    distribution: categorical
-    values:
-    - 2500
-    - 5000
-    - 7500
+    distribution: int_uniform
+    min: 0
+    max: 10000
   num_steps:
-    distribution: categorical
-    values: 
-    - 50000
-    - 30000
-    - 100000
+    distribution: int_uniform
+    min: 30000
+    max: 100000
   subword_regularization_alpha:
+    distribution: uniform
+    min: 0.0
+    max: 0.2
+  d_out_projection:
     distribution: categorical
     values:
-    - 0.0
-    - 0.1
-    - 0.2
+    - 512
+    - 768
+    - 1024
+  n_hidden_output:
+    distribution: int_uniform
+    min: 1
+    max: 5

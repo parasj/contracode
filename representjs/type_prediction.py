@@ -217,7 +217,8 @@ def train(
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
+        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model,
+        d_out_projection=d_out_projection, n_hidden_output=n_hidden_output)
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
 
     # Load pretrained checkpoint
