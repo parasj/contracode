@@ -66,6 +66,7 @@ class CodeEncoder(nn.Module):
         else:
             return out
 
+
 class CodeEncoderLSTM(nn.Module):
     def __init__(
         self,
@@ -83,7 +84,7 @@ class CodeEncoderLSTM(nn.Module):
         self.embedding = nn.Embedding(n_tokens, d_model)
         self.pos_encoder = PositionalEncoding(d_model, dropout, max_len=9000)
 
-        #Currently using 2 layers of LSTM
+        # Currently using 2 layers of LSTM
         print(f"CodeEncoderLSTM: Creating BiLSTM with {n_encoder_layers} layers, {d_model} hidden and input size")
         # TODO: Apply dropout to LSTM
         self.encoder = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=n_encoder_layers, bidirectional=True)
@@ -103,7 +104,7 @@ class CodeEncoderLSTM(nn.Module):
 
     def forward(self, x, lengths, no_project_override=False):
         self.encoder.flatten_parameters()
-        B, T = x.size(0), x.size(1)
+        _, T = x.size(0), x.size(1)
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config["d_model"])
         src_emb = self.pos_encoder(src_emb)
 
@@ -122,7 +123,9 @@ class CodeEncoderLSTM(nn.Module):
                 rep = out.mean(dim=0)  # B x n_directions*d_model
             elif self.config["project"] == "sequence_mean_nonpad":
                 out_ = out.transpose(0, 1)  # B x T x n_directions*d_model
-                mask = torch.arange(out_.size(1), device=out_.device).unsqueeze(0).unsqueeze(-1).expand_as(out_) < lengths.unsqueeze(1).unsqueeze(2)
+                mask = torch.arange(out_.size(1), device=out_.device).unsqueeze(0).unsqueeze(-1).expand_as(out_) < lengths.unsqueeze(
+                    1
+                ).unsqueeze(2)
                 rep = (out_ * mask.float()).sum(dim=1)  # B x n_directions*d_model
                 rep = rep / lengths.unsqueeze(1).float()
             elif self.config["project"] == "hidden":

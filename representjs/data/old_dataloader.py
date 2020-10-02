@@ -122,7 +122,7 @@ def get_javascript_collate(
         if "label" in examples[0]:
             label = [sp.EncodeAsIds(ex["label"]) for ex in examples]
             label = [torch.tensor([bos_id] + ids[: (max_target_length - 2)] + [eos_id]) for ids in label]
-            label_lengths = torch.tensor([len(l) for l in label], dtype=torch.long)
+            label_lengths = torch.tensor([len(label_item) for label_item in label], dtype=torch.long)
             label = pad_sequence(label, batch_first=True, padding_value=pad_id)
         else:
             label = None

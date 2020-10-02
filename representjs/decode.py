@@ -44,12 +44,14 @@ def beam_search_decode_eos(model, X, X_lengths, sp: spm.SentencePieceProcessor, 
 
     with torch.no_grad():
         # initial Y_hat and batchwise score tensors
-        sequences = [(
-            torch.zeros(B, max_decode_len, dtype=torch.long, device=X.device).fill_(bos_id),  # Y_hat
-            torch.ones(B, dtype=torch.long),  # Y_hat_lengths
-            torch.zeros(B, device=X.device),  # scores
-            torch.zeros(B, dtype=torch.long, device=X.device),  # ended
-        )]
+        sequences = [
+            (
+                torch.zeros(B, max_decode_len, dtype=torch.long, device=X.device).fill_(bos_id),  # Y_hat
+                torch.ones(B, dtype=torch.long),  # Y_hat_lengths
+                torch.zeros(B, device=X.device),  # scores
+                torch.zeros(B, dtype=torch.long, device=X.device),  # ended
+            )
+        ]
         # walk over each item in output sequence
         for t in range(max_decode_len - 1):
             all_candidates = []
@@ -77,12 +79,12 @@ def beam_search_decode_eos(model, X, X_lengths, sp: spm.SentencePieceProcessor, 
             # stack candidates
             beam_Y, beam_Y_lengths, beam_scores = zip(*all_candidates)
             beam_Y = torch.stack(beam_Y, dim=1)  # [B, V, T]
-            beam_Y_lengths = torch.stack(beam_Y_lengths, dim=1),  # [B, V]
+            beam_Y_lengths = (torch.stack(beam_Y_lengths, dim=1),)  # [B, V]
             beam_scores = torch.stack(beam_scores, dim=1)  # [B, V]
             # seleck k best per batch item
             topk_scores, topk_idx = torch.topk(beam_scores, k, dim=1, sorted=True)
             topk_Y = torch.gather(beam_Y, 1, topk_idx.unsqueeze(-1).expand(B, k, max_decode_len))
-            topk_Y_lenghts = torch.gather(beam_Y_lengths, 1, topk_idx.unsqueeze(-1).expand(B, k))
+            topk_Y_lengths = torch.gather(beam_Y_lengths, 1, topk_idx.unsqueeze(-1).expand(B, k))
             # set beam
             sequences = [(topk_Y[:, j, :], topk_Y_lengths[:, j, :], topk_scores[:, j]) for j in range(k)]
             # TODO: exit early if all sentences in all beam sequences contain </s>
@@ -105,11 +107,13 @@ def beam_search_decode(model, X, X_lengths, sp: spm.SentencePieceProcessor, max_
     with torch.no_grad():
         Y_hat_lengths = torch.ones(B, dtype=torch.long)  # Y_hat_lengths
         # initial Y_hat and batchwise score tensors
-        sequences = [(
-            torch.zeros(B, max_decode_len).long().to(X.device) + bos_id,
-            # torch.ones(B, dtype=torch.long),  # Y_hat_lengths
-            torch.zeros(B).to(X.device)
-        )]
+        sequences = [
+            (
+                torch.zeros(B, max_decode_len).long().to(X.device) + bos_id,
+                # torch.ones(B, dtype=torch.long),  # Y_hat_lengths
+                torch.zeros(B).to(X.device),
+            )
+        ]
         # walk over each item in output sequence
         for t in range(max_decode_len - 1):
             all_candidates = []
@@ -117,7 +121,7 @@ def beam_search_decode(model, X, X_lengths, sp: spm.SentencePieceProcessor, max_
             for Y_hat, scores in sequences:
                 Y_hat = Y_hat.to(X.device)
                 scores = scores.to(X.device)
-                logits = model(X, Y_hat[:, :t+1].to(X.device), src_lengths=X_lengths, tgt_lengths=Y_hat_lengths + 1)
+                logits = model(X, Y_hat[:, : t + 1].to(X.device), src_lengths=X_lengths, tgt_lengths=Y_hat_lengths + 1)
                 logits_t = logits[:, t, :]
                 logprobs_t = F.log_softmax(logits_t, dim=-1).to(scores.device)  # [B, V] tensor
                 for j in range(V):

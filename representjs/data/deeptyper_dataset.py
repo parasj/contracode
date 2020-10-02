@@ -2,7 +2,6 @@ from typing import List
 import re
 
 import jsbeautifier
-from loguru import logger
 import sentencepiece as spm
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -16,12 +15,21 @@ TYPED_MARKER_MID = "__LM__"
 TYPED_MARKER_END = "__LE__"
 
 
-def _tokenize(deeptyper_line, sp, id_to_target, target_to_id, max_length, split_source_targets_by_tab=False,
-              augmentations: List[dict]=None, program_mode="identity", subword_regularization_alpha=0):
-    """Given a line from the .txt data files in DeepTyper, format and 
+def _tokenize(
+    deeptyper_line,
+    sp,
+    id_to_target,
+    target_to_id,
+    max_length,
+    split_source_targets_by_tab=False,
+    augmentations: List[dict] = None,
+    program_mode="identity",
+    subword_regularization_alpha=0,
+):
+    """Given a line from the .txt data files in DeepTyper, format and
     tokenize the code into subwords while retaining a mapping between
     type labels and the subwords.
-    
+
     Returns:
         Beautified program
         List of subword IDs
@@ -30,8 +38,6 @@ def _tokenize(deeptyper_line, sp, id_to_target, target_to_id, max_length, split_
     assert TYPED_MARKER_START not in deeptyper_line
     assert TYPED_MARKER_MID not in deeptyper_line
     assert TYPED_MARKER_END not in deeptyper_line
-
-
 
     cap_length = max_length != -1
 
@@ -71,10 +77,12 @@ def _tokenize(deeptyper_line, sp, id_to_target, target_to_id, max_length, split_
         # Remove whitespace including newlines from inside labeled tokens introduced by beautification.
         # That way line subsampling is all-or-nothing (doesn't delete part of a labeled segment)
         name_re = f"{TYPED_MARKER_START}(.+?){TYPED_MARKER_MID}([0-9]+){TYPED_MARKER_END}"
+
         def _remove_newlines_in_segment(m):
             name, label = m.group(1), m.group(2)
             tok = TYPED_MARKER_START + name.strip() + TYPED_MARKER_MID + label + TYPED_MARKER_END
             return tok
+
         js_beautified = re.sub(name_re, _remove_newlines_in_segment, js_beautified, flags=re.DOTALL)
 
         # Augment code by calling _augment_server
@@ -94,7 +102,7 @@ def _tokenize(deeptyper_line, sp, id_to_target, target_to_id, max_length, split_
 
     # Normalize program
     js_beautified_norm = normalize_program(js_beautified)
- 
+
     # Subword tokenize, separately tokenizing each marked identifier
     js_buffer = js_beautified_norm
     subword_ids = [sp.PieceToId("<s>")]
@@ -126,6 +134,7 @@ def _tokenize(deeptyper_line, sp, id_to_target, target_to_id, max_length, split_
             break
         if label_i >= len(labels):
             import IPython
+
             IPython.embed()
         # A segment is (label_id, label_start, label_end)
         label_id = target_to_id.get(labels[label_i], target_to_id["$any$"])
@@ -160,10 +169,17 @@ def load_type_vocab(vocab_path):
 
 
 class DeepTyperDataset(torch.utils.data.Dataset):
-    def __init__(self, data_path, type_vocab_path, sentencepiece_filepath,
-                 max_length=1024, subword_regularization_alpha=0.0,
-                 split_source_targets_by_tab=False,
-                 augmentations: List[dict]=None, program_mode="identity"):
+    def __init__(
+        self,
+        data_path,
+        type_vocab_path,
+        sentencepiece_filepath,
+        max_length=1024,
+        subword_regularization_alpha=0.0,
+        split_source_targets_by_tab=False,
+        augmentations: List[dict] = None,
+        program_mode="identity",
+    ):
         self.max_length = max_length
         self.subword_regularization_alpha = subword_regularization_alpha
         self.split_source_targets_by_tab = split_source_targets_by_tab
@@ -183,10 +199,16 @@ class DeepTyperDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         line = self.lines[idx]
         _, subword_ids, label_segments = _tokenize(
-            line, self.sp, self.id_to_target, self.target_to_id, self.max_length,
+            line,
+            self.sp,
+            self.id_to_target,
+            self.target_to_id,
+            self.max_length,
             split_source_targets_by_tab=self.split_source_targets_by_tab,
-            augmentations=self.augmentations, program_mode=self.program_mode,
-            subword_regularization_alpha=self.subword_regularization_alpha)
+            augmentations=self.augmentations,
+            program_mode=self.program_mode,
+            subword_regularization_alpha=self.subword_regularization_alpha,
+        )
         if self.max_length != -1:
             assert len(subword_ids) <= self.max_length
         subword_ids = torch.tensor(subword_ids, dtype=torch.long)
@@ -222,7 +244,7 @@ def get_collate_fn(pad_id, no_type_id):
     return collate_fn
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     train_dataset = DeepTyperDataset(
         "/home/ajay/coderep/DeepTyper/data/train_nounk.txt",
         "/home/ajay/coderep/DeepTyper/data/target_wl",  # type_vocab_filepath
@@ -235,7 +257,7 @@ if __name__=="__main__":
             # {"fn": "rename_variable", "options": {"prob": 1.0}},
             # {"fn": "terser", "options": {"prob": 0.5, "prob_mangle": 0.0, "prob_compress_booleans_as_integers": 0.0, "module": True}}
         ],
-        program_mode="augmentation"
+        program_mode="augmentation",
     )
 
     # for it in range(5):

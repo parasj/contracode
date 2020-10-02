@@ -13,9 +13,7 @@ import pandas as pd
 import pyarrow.feather as feather
 from typing import Optional
 from tqdm.contrib.concurrent import thread_map
-from tqdm import tqdm
 import torch
-import torch.nn as nn
 from torch.utils.data.dataset import Dataset
 
 from transformers import (
@@ -23,17 +21,13 @@ from transformers import (
     CONFIG_MAPPING,
     AutoConfig,
     AutoModelWithLMHead,
-    AutoTokenizer,
     DataCollatorForLanguageModeling,
     DataCollatorForPermutationLanguageModeling,
     HfArgumentParser,
-    LineByLineTextDataset,
-    PreTrainedTokenizer,
-    TextDataset,
     Trainer,
     TrainingArguments,
     set_seed,
-    BertTokenizerFast
+    BertTokenizerFast,
 )
 
 
@@ -43,6 +37,7 @@ logging.basicConfig(level=logging.DEBUG)
 MODEL_CONFIG_CLASSES = list(MODEL_WITH_LM_HEAD_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
+
 @dataclass
 class ModelArguments:
     """
@@ -51,9 +46,7 @@ class ModelArguments:
 
     model_name_or_path: Optional[str] = field(
         default=None,
-        metadata={
-            "help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."
-        },
+        metadata={"help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."},
     )
     model_type: Optional[str] = field(
         default=None,
@@ -79,9 +72,7 @@ class DataTrainingArguments:
     Arguments pertaining to what data we are going to input our model for training and eval.
     """
 
-    train_data_file: Optional[str] = field(
-        default=None, metadata={"help": "The input training data file (a text file)."}
-    )
+    train_data_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
     eval_data_file: Optional[str] = field(
         default=None,
         metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
@@ -101,9 +92,7 @@ class DataTrainingArguments:
     )
     plm_probability: float = field(
         default=1 / 6,
-        metadata={
-            "help": "Ratio of length of a span of masked tokens to surrounding context length for permutation language modeling."
-        },
+        metadata={"help": "Ratio of length of a span of masked tokens to surrounding context length for permutation language modeling."},
     )
     max_span_length: int = field(
         default=5,
@@ -129,8 +118,8 @@ class BERTPretokenizedPretrainingDataset(Dataset):
         super().__init__()
         logger.info("Loading data from {}".format(data_path))
         gc.disable()
-        files = glob.glob(f'{data_path}*')
-        logger.info("File list {}".format(', '.join(files)))
+        files = glob.glob(f"{data_path}*")
+        logger.info("File list {}".format(", ".join(files)))
         dfs = thread_map(feather.read_feather, files, max_workers=16)
         self.data_df = pd.concat(dfs)
         gc.enable()
@@ -141,7 +130,7 @@ class BERTPretokenizedPretrainingDataset(Dataset):
         return len(self.data_df)
 
     def __getitem__(self, i):
-        return torch.tensor(self.data_df["toks"][i][:self.max_len], dtype=torch.long)
+        return torch.tensor(self.data_df["toks"][i][: self.max_len], dtype=torch.long)
 
 
 def get_dataset(
@@ -253,9 +242,7 @@ def main():
 
     # Get datasets
     logging.info("Loading train dataset")
-    train_dataset = (
-        get_dataset(data_args) if training_args.do_train else None
-    )
+    train_dataset = get_dataset(data_args) if training_args.do_train else None
     logging.info("Loading eval dataset")
     eval_dataset = (
         get_dataset(

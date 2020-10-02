@@ -60,7 +60,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
             # Compute average loss
             total_loss = 0
             num_examples = 0
-            pbar = tqdm.tqdm(loader, desc=f"evalaute")
+            pbar = tqdm.tqdm(loader, desc="evalaute")
             for X, lengths, output_attn, labels in pbar:
                 if use_cuda:
                     X, lengths, output_attn, labels = X.cuda(), lengths.cuda(), output_attn.cuda(), labels.cuda()
@@ -76,19 +76,19 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
                 avg_loss = total_loss / num_examples
 
                 # Compute accuracy
-                (corr1_any, corr5_any), num_labels_any = accuracy(
-                    logits.cpu(), labels.cpu(), topk=(1, 5), ignore_idx=(no_type_id,))
+                (corr1_any, corr5_any), num_labels_any = accuracy(logits.cpu(), labels.cpu(), topk=(1, 5), ignore_idx=(no_type_id,))
                 num1_any += corr1_any
                 num5_any += corr5_any
                 num_labels_any_total += num_labels_any
 
-                (corr1, corr5), num_labels = accuracy(
-                    logits.cpu(), labels.cpu(), topk=(1, 5), ignore_idx=(no_type_id, any_id))
+                (corr1, corr5), num_labels = accuracy(logits.cpu(), labels.cpu(), topk=(1, 5), ignore_idx=(no_type_id, any_id))
                 num1 += corr1
                 num5 += corr5
                 num_labels_total += num_labels
 
-                pbar.set_description(f"evaluate average loss {avg_loss:.4f} num1 {num1_any} num_labels_any_total {num_labels_any_total} avg acc1_any {num1_any / (num_labels_any_total + 1e-6) * 100:.4f}")
+                pbar.set_description(
+                    f"evaluate average loss {avg_loss:.4f} num1 {num1_any} num_labels_any_total {num_labels_any_total} avg acc1_any {num1_any / (num_labels_any_total + 1e-6) * 100:.4f}"
+                )
 
         # Average accuracies
         acc1 = float(num1) / num_labels_total * 100
@@ -106,7 +106,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
                 "eval/num_labels": num_labels_total,
                 "eval/acc@1_any": acc1_any,
                 "eval/acc@5_any": acc5_any,
-                "eval/num_labels_any": num_labels_any_total
+                "eval/num_labels_any": num_labels_any_total,
             },
         )
 
@@ -162,7 +162,7 @@ def train(
 
     if run_dir != RUN_DIR:
         run_dir = Path(run_dir)
-    run_dir = run_dir / (run_name + "_{}".format(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
+    run_dir = run_dir / (run_name + "_{}".format(datetime.now().strftime("%Y-%m-%d_%H-%M-%S")))
     run_dir.mkdir(exist_ok=True, parents=True)
     logger.add(str((run_dir / "train.log").resolve()))
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
@@ -189,15 +189,19 @@ def train(
     if sample_lines_prob > 0:
         augmentations = [
             {"fn": "sample_lines", "options": {"prob": sample_lines_prob, "prob_keep_line": sample_lines_prob_keep_line}},
-        ] 
+        ]
         program_mode = "augmentation"
     else:
         augmentations = None
         program_mode = "identity"
     train_dataset = DeepTyperDataset(
-        train_filepath, type_vocab_filepath, spm_filepath, max_length=max_seq_len,
+        train_filepath,
+        type_vocab_filepath,
+        spm_filepath,
+        max_length=max_seq_len,
         subword_regularization_alpha=subword_regularization_alpha,
-        augmentations=augmentations, program_mode=program_mode
+        augmentations=augmentations,
+        program_mode=program_mode,
     )
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = torch.utils.data.DataLoader(
@@ -212,7 +216,7 @@ def train(
         spm_filepath,
         max_length=max_eval_seq_len,
         subword_regularization_alpha=0,
-        split_source_targets_by_tab=eval_filepath.endswith(".json")
+        split_source_targets_by_tab=eval_filepath.endswith(".json"),
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = torch.utils.data.DataLoader(
@@ -220,15 +224,24 @@ def train(
     )
 
     # Create model
-    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model,
-        d_out_projection=d_out_projection, n_hidden_output=n_hidden_output)
+    model = TypeTransformer(
+        n_tokens=sp.GetPieceSize(),
+        n_output_tokens=len(id_to_target),
+        pad_id=pad_id,
+        encoder_type=encoder_type,
+        n_encoder_layers=n_encoder_layers,
+        d_model=d_model,
+        d_out_projection=d_out_projection,
+        n_hidden_output=n_hidden_output,
+    )
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
 
     # Load pretrained checkpoint
     if pretrain_resume_path:
         assert not resume_path
-        logger.info(f"Resuming training from pretraining checkpoint {pretrain_resume_path}, pretrain_resume_encoder_name={pretrain_resume_encoder_name}")
+        logger.info(
+            f"Resuming training from pretraining checkpoint {pretrain_resume_path}, pretrain_resume_encoder_name={pretrain_resume_encoder_name}"
+        )
         checkpoint = torch.load(pretrain_resume_path)
         pretrained_state_dict = checkpoint["model_state_dict"]
         encoder_state_dict = {}
@@ -274,7 +287,9 @@ def train(
 
     # Evaluate initial metrics
     logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
+    eval_metric, eval_metrics = _evaluate(
+        model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
+    )
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
         max_eval_metrics[metric] = value
@@ -330,7 +345,8 @@ def train(
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
         eval_metric, eval_metrics = _evaluate(
-            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
+            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
+        )
         for metric, value in eval_metrics.items():
             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
             max_eval_metrics[metric] = max(value, max_eval_metrics[metric])
@@ -347,12 +363,12 @@ def train(
                 "global_step": global_step,
                 "config": config,
                 "eval_metric": eval_metric,
-                "min_eval_metric": min_eval_metric
+                "min_eval_metric": min_eval_metric,
             }
             if eval_metric < min_eval_metric:
                 logger.info(f"New best evaluation metric: prev {min_eval_metric:.4f} > new {eval_metric:.4f}")
                 min_eval_metric = eval_metric
-                model_file = run_dir / f"ckpt_best.pth"
+                model_file = run_dir / "ckpt_best.pth"
             else:
                 model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             logger.info(f"Saving checkpoint to {model_file}...")
@@ -410,7 +426,7 @@ def eval(
         spm_filepath,
         max_length=max_seq_len,
         subword_regularization_alpha=subword_regularization_alpha,
-        split_source_targets_by_tab=eval_filepath.endswith(".json")
+        split_source_targets_by_tab=eval_filepath.endswith(".json"),
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = torch.utils.data.DataLoader(
@@ -418,8 +434,14 @@ def eval(
     )
 
     # Create model
-    model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
+    model = TypeTransformer(
+        n_tokens=sp.GetPieceSize(),
+        n_output_tokens=len(id_to_target),
+        pad_id=pad_id,
+        encoder_type=encoder_type,
+        n_encoder_layers=n_encoder_layers,
+        d_model=d_model,
+    )
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
@@ -435,7 +457,9 @@ def eval(
 
         # Evaluate metrics
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-        _, eval_metrics = _evaluate(model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention)
+        _, eval_metrics = _evaluate(
+            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
+        )
         for metric, value in eval_metrics.items():
             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
 
@@ -443,7 +467,8 @@ def eval(
 def concatenate_files_in_list(
     project_list="../DeepTyper/data/test_projects.txt",
     project_dir="../DeepTyper/data/outputs-gold",
-    output_file="../DeepTyper/data/test-outputs-gold.json"):
+    output_file="../DeepTyper/data/test-outputs-gold.json",
+):
     """Utility method, used to concatenate DeepTyper test projects"""
     # Find json files
     json_paths = []

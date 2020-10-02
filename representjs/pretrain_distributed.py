@@ -13,7 +13,6 @@ from loguru import logger
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.utils.rnn import pad_sequence
-from torch.optim.lr_scheduler import LambdaLR
 
 from models.code_mlm import CodeMLM, CodeContrastiveMLM
 from representjs import RUN_DIR, CSNJS_DIR
@@ -241,11 +240,16 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # Create model
     if config["loss_mode"] == "infonce":
-        model = CodeMoCo(sp.GetPieceSize(), pad_id=pad_id, d_model=config["d_model"], encoder_config=dict(
-            encoder_type=config["encoder_type"],
-            lstm_project_mode=config["lstm_project_mode"],
-            n_encoder_layers=config["n_encoder_layers"]
-        ))
+        model = CodeMoCo(
+            sp.GetPieceSize(),
+            pad_id=pad_id,
+            d_model=config["d_model"],
+            encoder_config=dict(
+                encoder_type=config["encoder_type"],
+                lstm_project_mode=config["lstm_project_mode"],
+                n_encoder_layers=config["n_encoder_layers"],
+            ),
+        )
         logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
     elif config["loss_mode"] == "mlm":
         model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id, encoder_type=config["encoder_type"], n_encoder_layers=config["n_encoder_layers"])
@@ -273,7 +277,9 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=config["weight_decay"])
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=config["lr"], betas=config["adam_betas"], eps=1e-6, weight_decay=config["weight_decay"]
+    )
     sched = get_linear_schedule_with_warmup(optimizer, config["warmup_steps"], config["num_steps"])
 
     # Setup data
@@ -284,7 +290,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         limit_size=config["limit_dataset_size"],
         sp=sp,
         subword_regularization_alpha=config["subword_regularization_alpha"],
-        max_length=config["max_length"]
+        max_length=config["max_length"],
     )
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(

@@ -6,4 +6,3 @@ black:
 
 lint:
 	flake8 --max-line-length 200 --ignore=E203 representjs
-
