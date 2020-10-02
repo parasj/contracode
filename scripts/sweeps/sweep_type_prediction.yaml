@@ -1,0 +1,69 @@
+program: representjs/sweep_type_prediction.py
+method: bayes
+metric:
+  name: eval/acc@1_max
+  goal: maximize
+parameters:
+  # configurable parameters
+  run_name:
+    value: 90001_sweep_type_prediction
+  train_filepath:
+    value: data/type_prediction/train_nounk.txt
+  eval_filepath:
+    value: data/type_prediction/valid_nounk.txt
+  type_vocab_filepath:
+    value: data/type_prediction/target_wl
+  spm_filepath:
+    value: data/type_prediction/csnjs_8k_9995p_unigram_url.model
+  num_workers:
+    value: 8
+  max_seq_len:
+    value: 2048
+  max_eval_seq_len:
+    value: 2048
+  pretrain_resume_path:
+    value: data/runs/20302_pretrain_moco_lstm2l_hidden_1590814493/ckpt_pretrain_ep0007_step0020000.pth
+  pretrain_resume_encoder_name:
+    value: encoder_q
+  num_epochs:
+    value: 30
+  no_output_attention:
+    value: True
+  encoder_type:
+    value: lstm
+  n_encoder_layers:
+    value: 2
+
+  # parameters to sweep
+  batch_size:
+    distribution: categorical
+    values:
+    - 8
+    - 16
+    - 32
+  lr:
+    distribution: uniform
+    min: 0.0005
+    max: 0.01
+  warmup_steps:
+    distribution: int_uniform
+    min: 0
+    max: 10000
+  num_steps:
+    distribution: int_uniform
+    min: 30000
+    max: 100000
+  subword_regularization_alpha:
+    distribution: uniform
+    min: 0.0
+    max: 0.2
+  d_out_projection:
+    distribution: categorical
+    values:
+    - 512
+    - 768
+    - 1024
+  n_hidden_output:
+    distribution: int_uniform
+    min: 1
+    max: 5

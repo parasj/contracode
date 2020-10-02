@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 import os
 import random
@@ -161,7 +162,7 @@ def train(
 
     if run_dir != RUN_DIR:
         run_dir = Path(run_dir)
-    run_dir = run_dir / run_name
+    run_dir = run_dir / (run_name + "_{}".format(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
     run_dir.mkdir(exist_ok=True, parents=True)
     logger.add(str((run_dir / "train.log").resolve()))
     logger.info(f"Saving logs, model checkpoints to {run_dir}")
@@ -281,7 +282,6 @@ def train(
     wandb.log(eval_metrics, step=global_step)
     wandb.log({k + "_max": v for k, v in max_eval_metrics.items()}, step=global_step)
 
-
     for epoch in tqdm.trange(epoch + 1, num_epochs + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         model.train()
@@ -373,9 +373,6 @@ def eval(
     encoder_type: str = "transformer",
     n_encoder_layers: int = 6,
     d_model: int = 512,
-    # Output layer hparams
-    d_out_projection: int = 512,
-    n_hidden_output: int = 1,
     # Optimization
     batch_size=16,
     # Loss
@@ -422,8 +419,7 @@ def eval(
 
     # Create model
     model = TypeTransformer(n_tokens=sp.GetPieceSize(), n_output_tokens=len(id_to_target), pad_id=pad_id,
-        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model,
-        d_out_projection=d_out_projection, n_hidden_output=n_hidden_output)
+        encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, d_model=d_model)
     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
@@ -474,8 +470,4 @@ def concatenate_files_in_list(
 
 
 if __name__ == "__main__":
-    fire.Fire({
-        "train": train,
-        "eval": eval,
-        "concat": concatenate_files_in_list
-    })
+    fire.Fire(train)

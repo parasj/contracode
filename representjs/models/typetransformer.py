@@ -12,6 +12,8 @@ class TypeTransformer(nn.Module):
         n_tokens,
         n_output_tokens,
         d_model=512,
+        d_out_projection=512,
+        n_hidden_output=1,
         d_rep=128,
         n_head=8,
         n_encoder_layers=6,
@@ -45,7 +47,17 @@ class TypeTransformer(nn.Module):
                 pad_id=pad_id,
                 project=False
             )
-            self.output = nn.Sequential(nn.Linear(d_model*2, d_model), nn.ReLU(), nn.Linear(d_model, n_output_tokens))
+            layers = []
+            layers.append(nn.Linear(d_model*2, d_out_projection))
+            if n_hidden_output > 1:
+                layers.append(nn.Dropout(dropout))
+            layers.append(nn.ReLU())
+            for hidden_idx in range(n_hidden_output - 1):
+                layers.append(nn.Linear(d_out_projection, d_out_projection))
+                layers.append(nn.Dropout(dropout))
+                layers.append(nn.ReLU())
+            layers.append(nn.Linear(d_out_projection, n_output_tokens))
+            self.output = nn.Sequential(*layers)
 
     def forward(self, src_tok_ids, lengths=None, output_attention=None):
         r"""
