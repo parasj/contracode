@@ -25,10 +25,14 @@ def embed_coco(checkpoint, data_path, spm_filepath=DEFAULT_SPM_UNIGRAM_FILEPATH,
     pad_id = sp.PieceToId("[PAD]")
 
     # load model
-    model = CodeMoCo(n_tokens=n_tokens, pad_id=pad_id, encoder_config=dict(encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, project='hidden'))
+    model = CodeMoCo(
+        n_tokens=n_tokens,
+        pad_id=pad_id,
+        encoder_config=dict(encoder_type=encoder_type, n_encoder_layers=n_encoder_layers, project="hidden"),
+    )
     state = torch.load(checkpoint)
-    print(state['model_state_dict'].keys())
-    model.load_state_dict(state['model_state_dict'])
+    print(state["model_state_dict"].keys())
+    model.load_state_dict(state["model_state_dict"])
     model.cuda()
     model.eval()
 
@@ -41,8 +45,8 @@ def embed_coco(checkpoint, data_path, spm_filepath=DEFAULT_SPM_UNIGRAM_FILEPATH,
     out_rows = []
     with torch.no_grad():
         for row_idx in tqdm.tqdm(list(range(len(df))), desc="Table"):
-            text = df.loc[row_idx]['code']
-            func_name = df.loc[row_idx]['func_name']
+            text = df.loc[row_idx]["code"]
+            func_name = df.loc[row_idx]["func_name"]
             x_encoded = torch.LongTensor(sp.EncodeAsIds(text)).cuda()
             lens = torch.LongTensor([len(x_encoded)])
             try:
@@ -51,13 +55,13 @@ def embed_coco(checkpoint, data_path, spm_filepath=DEFAULT_SPM_UNIGRAM_FILEPATH,
             except Exception as e:
                 print("Error!", e)
                 continue
-    
-    tsne_out_path = (DATA_DIR / 'tsne')
+
+    tsne_out_path = DATA_DIR / "tsne"
     tsne_out_path.mkdir(parents=True, exist_ok=True)
-    print('writing output to ', tsne_out_path.resolve())
-    with (tsne_out_path / "tsne_out_embedded_grouped_hidden.pickle").open('wb') as f:
+    print("writing output to ", tsne_out_path.resolve())
+    with (tsne_out_path / "tsne_out_embedded_grouped_hidden.pickle").open("wb") as f:
         pickle.dump(out_rows, f)
-        
+
 
 if __name__ == "__main__":
     fire.Fire({"embed_coco": embed_coco, "embed_bert": embed_bert})

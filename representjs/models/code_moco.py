@@ -126,9 +126,22 @@ class CodeMoCo(MoCoTemplate):
     def __init__(self, n_tokens, d_model=512, d_rep=128, K=107520, m=0.999, T=0.07, encoder_config={}, pad_id=None):
         super().__init__(d_rep, K, m, T, dict(n_tokens=n_tokens, d_model=d_model, d_rep=d_rep, pad_id=pad_id, **encoder_config))
 
-    def make_encoder(self, n_tokens, d_model, d_rep, pad_id=None, encoder_type="transformer", lstm_project_mode="hidden", n_encoder_layers=6, dropout=0.1, **kwargs):
+    def make_encoder(
+        self,
+        n_tokens,
+        d_model,
+        d_rep,
+        pad_id=None,
+        encoder_type="transformer",
+        lstm_project_mode="hidden",
+        n_encoder_layers=6,
+        dropout=0.1,
+        **kwargs
+    ):
         if encoder_type == "transformer":
-            return CodeEncoder(n_tokens, project=True, pad_id=pad_id, d_model=d_model, d_rep=d_rep, n_encoder_layers=n_encoder_layers, **kwargs)
+            return CodeEncoder(
+                n_tokens, project=True, pad_id=pad_id, d_model=d_model, d_rep=d_rep, n_encoder_layers=n_encoder_layers, **kwargs
+            )
         elif encoder_type == "lstm":
             return CodeEncoderLSTM(
                 n_tokens=n_tokens,
@@ -137,7 +150,7 @@ class CodeMoCo(MoCoTemplate):
                 n_encoder_layers=n_encoder_layers,
                 dropout=dropout,
                 pad_id=pad_id,
-                project=lstm_project_mode
+                project=lstm_project_mode,
             )
         else:
             raise ValueError

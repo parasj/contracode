@@ -22,7 +22,7 @@ class TypeTransformer(nn.Module):
         activation="relu",
         norm=True,
         pad_id=None,
-        encoder_type="transformer"
+        encoder_type="transformer",
     ):
         super(TypeTransformer, self).__init__()
         assert norm
@@ -30,7 +30,7 @@ class TypeTransformer(nn.Module):
         self.config = {k: v for k, v in locals().items() if k != "self"}
 
         # Encoder and output for type prediction
-        assert (encoder_type in ["transformer", "lstm"])
+        assert encoder_type in ["transformer", "lstm"]
         if encoder_type == "transformer":
             self.encoder = CodeEncoder(
                 n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
@@ -45,10 +45,10 @@ class TypeTransformer(nn.Module):
                 n_encoder_layers=n_encoder_layers,
                 dropout=dropout,
                 pad_id=pad_id,
-                project=False
+                project=False,
             )
             layers = []
-            layers.append(nn.Linear(d_model*2, d_out_projection))
+            layers.append(nn.Linear(d_model * 2, d_out_projection))
             if n_hidden_output > 1:
                 layers.append(nn.Dropout(dropout))
             layers.append(nn.ReLU())

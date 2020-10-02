@@ -14,13 +14,7 @@ class CodeMLM(nn.Module):
             self.encoder = CodeEncoder(n_tokens, project=False, pad_id=pad_id, d_model=d_model, **encoder_args)
             self.head_in = d_model
         elif encoder_type == "lstm":
-            self.encoder = CodeEncoderLSTM(
-                n_tokens=n_tokens,
-                d_model=d_model,
-                pad_id=pad_id,
-                project=False,
-                **encoder_args
-            )
+            self.encoder = CodeEncoderLSTM(n_tokens=n_tokens, d_model=d_model, pad_id=pad_id, project=False, **encoder_args)
             self.head_in = 2 * d_model
         else:
             raise ValueError
@@ -29,7 +23,7 @@ class CodeMLM(nn.Module):
 
     def embed(self, im):
         return self.encoder(im)
-        
+
     def forward(self, im, lengths):
         features = self.encoder(im, lengths)  # L x B x D=head_in
         L, B, D = features.shape

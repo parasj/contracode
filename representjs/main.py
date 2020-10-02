@@ -31,7 +31,9 @@ CSNJS_TEST_FILEPATH = os.path.join(DATA_DIR, "javascript_test_0.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model")
 
 
-def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20, loss_type="nll_token"):
+def _evaluate(
+    model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20, loss_type="nll_token"
+):
     model.eval()
     pad_id = sp.PieceToId("[PAD]")
 
@@ -63,11 +65,15 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_
                 # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
                 logits = model(X, Y[:, :-1], X_lengths, Y_lengths)
                 if loss_type == "nll_sequence":
-                    loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id, reduction='sum')
+                    loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id, reduction="sum")
                     loss = loss / X.size(0)  # Average over num sequences, not target sequence lengths
-                                            # Thus, minimize bits per sequence.
+                    # Thus, minimize bits per sequence.
                 elif loss_type == "nll_token":
-                    loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id,)
+                    loss = F.cross_entropy(
+                        logits.transpose(1, 2),
+                        Y[:, 1:],
+                        ignore_index=pad_id,
+                    )
 
                 # TODO: Compute Precision/Recall/F1 and BLEU
 
@@ -105,7 +111,7 @@ def calculate_f1_metric(
             for i in range(X.size(0)):
                 gt_identifier = ids_to_strs(Y[i], sp)
                 top_beam = pred[i][0]
-                pred_dict = {'gt': gt_identifier}
+                pred_dict = {"gt": gt_identifier}
                 for i, beam_result in enumerate(pred[i]):
                     pred_dict[f"pred_{i}"] = beam_result
                 sample_generations.append(pred_dict)
@@ -121,17 +127,11 @@ def calculate_f1_metric(
     return precision / n_examples, recall / n_examples, f1 / n_examples, sample_generations
 
 
-def calculate_nll(
-    model,
-    test_loader,
-    sp: spm.SentencePieceProcessor,
-    use_cuda=True,
-    logger_fn=None
-):
+def calculate_nll(model, test_loader, sp: spm.SentencePieceProcessor, use_cuda=True, logger_fn=None):
     with Timer() as t:
         pad_id = sp.PieceToId("[PAD]")
         n_examples = 0
-        test_nll = 0.
+        test_nll = 0.0
         pbar = tqdm.tqdm(test_loader, desc="test")
         for X, Y, X_lengths, Y_lengths in pbar:
             B, L = X.shape
@@ -140,12 +140,12 @@ def calculate_nll(
                 X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
             pred_y = model(X, Y[:, :-1].to(X.device), X_lengths, Y_lengths)
             B, X, D = pred_y.shape
-            loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction='sum')
-            
+            loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction="sum")
+
             n_examples += B
             test_nll += loss.item()
             if logger_fn is not None:
-                logger_fn({'test_nll': loss.item() / B, 'test_nll_avg': test_nll / n_examples})
+                logger_fn({"test_nll": loss.item() / B, "test_nll_avg": test_nll / n_examples})
         return test_nll / n_examples
 
 
@@ -199,6 +199,7 @@ def test(
     pretrained_state_dict = checkpoint["model_state_dict"]
     print("CHECKPOINT", checkpoint_file)
     from pprint import pprint
+
     print("KEYS", checkpoint["model_state_dict"].keys())
     try:
         model.load_state_dict(pretrained_state_dict)
@@ -218,7 +219,9 @@ def test(
     metric = F1MetricMethodName()
     model.eval()
     with torch.no_grad():
-        precision, recall, f1, sample_generations = calculate_f1_metric(metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
+        precision, recall, f1, sample_generations = calculate_f1_metric(
+            metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log
+        )
     logger.info(f"NLL: {test_nll:.5f}")
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
@@ -256,7 +259,7 @@ def train(
     adam_beta1: float = 0.9,
     adam_beta2: float = 0.98,
     use_lr_warmup: bool = True,
-    loss_type = "nll_token",  # nll_token or nll_sequence
+    loss_type="nll_token",  # nll_token or nll_sequence
     # Loss
     subword_regularization_alpha: float = 0,
     # Computational
@@ -281,8 +284,11 @@ def train(
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
 
     train_augmentations = [
-        {"fn": "sample_lines", "line_length_pct": 0.5},  # WARN: this is a no-op because the arguments for sample_lines are prob and prob_keep_line
-                                                         # Also need to have options under an "options" key
+        {
+            "fn": "sample_lines",
+            "line_length_pct": 0.5,
+        },  # WARN: this is a no-op because the arguments for sample_lines are prob and prob_keep_line
+        # Also need to have options under an "options" key
         {"fn": "insert_var_declaration", "prob": 0.5},
         {"fn": "rename_variable", "prob": 0.5},
     ]
@@ -328,8 +334,6 @@ def train(
     elif model_type == "lstm":
         model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
         logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
-    elif model_type == "huggingface_transformer":
-        model = 
 
     # Load checkpoint
     if resume_path:
@@ -382,20 +386,22 @@ def train(
             # NOTE: X and Y are [B, max_seq_len] tensors (batch first)
             logits = model(X, Y[:, :-1], X_lengths, Y_lengths)
             if loss_type == "nll_sequence":
-                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id, reduction='sum')
+                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id, reduction="sum")
                 loss = loss / X.size(0)  # Average over num sequences, not target sequence lengths
-                                        # Thus, minimize bits per sequence.
+                # Thus, minimize bits per sequence.
             elif loss_type == "nll_token":
-                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id,)
+                loss = F.cross_entropy(
+                    logits.transpose(1, 2),
+                    Y[:, 1:],
+                    ignore_index=pad_id,
+                )
             loss.backward()
             optimizer.step()
             scheduler.step()
 
             # Log loss
             global_step += 1
-            wandb.log(
-                {"epoch": epoch, f"label-{label_mode}/train_loss": loss.item(), "lr": scheduler.get_last_lr()[0]}, step=global_step
-            )
+            wandb.log({"epoch": epoch, f"label-{label_mode}/train_loss": loss.item(), "lr": scheduler.get_last_lr()[0]}, step=global_step)
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
         # Evaluate

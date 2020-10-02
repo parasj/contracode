@@ -64,7 +64,7 @@ class TransformerModel(nn.Module):
 
     def generate_square_subsequent_mask(self, sz):
         r"""Generate a square mask for the sequence. The masked positions are filled with float('-inf').
-            Unmasked positions are filled with float(0.0).
+        Unmasked positions are filled with float(0.0).
         """
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
         mask = mask.float().masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, float(0.0))
@@ -98,12 +98,11 @@ class Seq2SeqLSTM(nn.Module):
             n_encoder_layers=n_encoder_layers,
             dropout=dropout,
             pad_id=pad_id,
-            project="hidden"
+            project="hidden",
         )
 
         # Decoder
-        self.decoder = nn.LSTM(input_size=d_model, hidden_size=d_rep, num_layers=1,
-                               bidirectional=False, dropout=dropout)
+        self.decoder = nn.LSTM(input_size=d_model, hidden_size=d_rep, num_layers=1, bidirectional=False, dropout=dropout)
         self.decoder_c_0 = nn.Parameter(torch.zeros(1, 1, d_rep))
         # self.decoder_proj = nn.Sequential(nn.Linear(d_rep, d_model), nn.ReLU())
 
@@ -123,7 +122,9 @@ class Seq2SeqLSTM(nn.Module):
         # Decode, using the same embedding as the encoder
         # TODO: Try a different subword vocab, or a non-subword vocab
         tgt_emb = self.encoder.embedding(tgt_tok_ids).transpose(0, 1) * math.sqrt(self.config["d_model"])
-        tgt_emb_packed = torch.nn.utils.rnn.pack_padded_sequence(tgt_emb, tgt_lengths - 1, enforce_sorted=False)  # subtract 1 from lengths since targets are expected to be shifted
+        tgt_emb_packed = torch.nn.utils.rnn.pack_padded_sequence(
+            tgt_emb, tgt_lengths - 1, enforce_sorted=False
+        )  # subtract 1 from lengths since targets are expected to be shifted
         output, _ = self.decoder(tgt_emb_packed, (oh_0, self.decoder_c_0.expand_as(oh_0)))  # [T, B, d_rep] (packed)
         # output = self.decoder_proj(output)  # [T, B, d_model] (packed)
         # print("Prior to pading output, shapes:")
@@ -136,8 +137,7 @@ class Seq2SeqLSTM(nn.Module):
         # print("tgt_lengths.shape", tgt_lengths.shape)
         # print("tgt_length min", tgt_lengths.min())
         # print("tgt_length max", tgt_lengths.max())
-        output, _ = torch.nn.utils.rnn.pad_packed_sequence(
-            output, batch_first=True, total_length=tgt_tok_ids.size(1))  # [B, T, d_model]
+        output, _ = torch.nn.utils.rnn.pad_packed_sequence(output, batch_first=True, total_length=tgt_tok_ids.size(1))  # [B, T, d_model]
         # print("After packing", output.shape)
         logits = torch.matmul(output, self.encoder.embedding.weight.transpose(0, 1))  # [B, T, ntok]
         return logits

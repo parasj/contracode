@@ -4,7 +4,7 @@ import os
 
 from tqdm import tqdm
 
-REMOTE_BASE = "https://contrastive-code.s3.amazonaws.com" # "https://people.eecs.berkeley.edu/~paras/datasets"
+REMOTE_BASE = "https://contrastive-code.s3.amazonaws.com"  # "https://people.eecs.berkeley.edu/~paras/datasets"
 SHARED_BASE = Path("/work/paras/contracode/data").resolve()
 DEFAULT_LOCAL_BASE = str((Path(__file__).parent.parent / "data").resolve())
 
@@ -29,11 +29,11 @@ def dl_cmds(dataset_path: str, extract=False, LOCAL_BASE=DEFAULT_LOCAL_BASE):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Download ContraCode data')
-    parser.add_argument('--path', type=str, default=DEFAULT_LOCAL_BASE, help='Path to save output to')
-    parser.add_argument('--skip-csn', action='store_true')
-    parser.add_argument('--skip-hf', action='store_true')
-    parser.add_argument('--skip-type-prediction', action='store_true')
+    parser = argparse.ArgumentParser(description="Download ContraCode data")
+    parser.add_argument("--path", type=str, default=DEFAULT_LOCAL_BASE, help="Path to save output to")
+    parser.add_argument("--skip-csn", action="store_true")
+    parser.add_argument("--skip-hf", action="store_true")
+    parser.add_argument("--skip-type-prediction", action="store_true")
     args = parser.parse_args()
 
     LOCAL_PATH = Path(args.path)
@@ -53,14 +53,14 @@ if __name__ == "__main__":
         cmds.extend(dl_cmds("augmented_data/augmented_minus_compression.jsonl.gz", False, LOCAL_PATH))
         cmds.extend(dl_cmds("augmented_data/augmented_minus_identifier.jsonl.gz", False, LOCAL_PATH))
         cmds.extend(dl_cmds("augmented_data/augmented_minus_line_subsampling.jsonl.gz", False, LOCAL_PATH))
-    
+
     if not args.skip_type_prediction:
         cmds.extend(dl_cmds("type_prediction/test_projects_gold_filtered.json", False, LOCAL_PATH))
         cmds.extend(dl_cmds("type_prediction/target_wl", False, LOCAL_PATH))
         cmds.extend(dl_cmds("type_prediction/csnjs_8k_9995p_unigram_url.model", False, LOCAL_PATH))
         cmds.extend(dl_cmds("type_prediction/train_nounk.txt", False, LOCAL_PATH))
         cmds.extend(dl_cmds("type_prediction/valid_nounk.txt", False, LOCAL_PATH))
-    
+
     cmds.extend(dl_cmds("vocab/8k_bpe/8k_bpe-vocab.txt", False, LOCAL_PATH))
 
     print("\n".join(cmds))
