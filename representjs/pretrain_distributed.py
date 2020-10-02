@@ -13,7 +13,6 @@ from loguru import logger
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.utils.rnn import pad_sequence
-from torch.optim.lr_scheduler import LambdaLR
 
 from models.code_mlm import CodeMLM, CodeContrastiveMLM
 from representjs import RUN_DIR, CSNJS_DIR

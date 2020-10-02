@@ -2,7 +2,6 @@ from typing import List
 import re
 
 import jsbeautifier
-from loguru import logger
 import sentencepiece as spm
 import torch
 from torch.nn.utils.rnn import pad_sequence

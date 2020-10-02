@@ -128,25 +128,24 @@ def calculate_f1_metric(
 
 
 def calculate_nll(model, test_loader, sp: spm.SentencePieceProcessor, use_cuda=True, logger_fn=None):
-    with Timer() as t:
-        pad_id = sp.PieceToId("[PAD]")
-        n_examples = 0
-        test_nll = 0.0
-        pbar = tqdm.tqdm(test_loader, desc="test")
-        for X, Y, X_lengths, Y_lengths in pbar:
-            B, L = X.shape
-            if use_cuda:
-                X, Y = X.cuda(), Y.cuda()  # B, L
-                X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
-            pred_y = model(X, Y[:, :-1].to(X.device), X_lengths, Y_lengths)
-            B, X, D = pred_y.shape
-            loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction="sum")
+    pad_id = sp.PieceToId("[PAD]")
+    n_examples = 0
+    test_nll = 0.0
+    pbar = tqdm.tqdm(test_loader, desc="test")
+    for X, Y, X_lengths, Y_lengths in pbar:
+        B, L = X.shape
+        if use_cuda:
+            X, Y = X.cuda(), Y.cuda()  # B, L
+            X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
+        pred_y = model(X, Y[:, :-1].to(X.device), X_lengths, Y_lengths)
+        B, X, D = pred_y.shape
+        loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction="sum")
 
-            n_examples += B
-            test_nll += loss.item()
-            if logger_fn is not None:
-                logger_fn({"test_nll": loss.item() / B, "test_nll_avg": test_nll / n_examples})
-        return test_nll / n_examples
+        n_examples += B
+        test_nll += loss.item()
+        if logger_fn is not None:
+            logger_fn({"test_nll": loss.item() / B, "test_nll_avg": test_nll / n_examples})
+    return test_nll / n_examples
 
 
 def test(
@@ -198,8 +197,6 @@ def test(
     checkpoint = torch.load(checkpoint_file)
     pretrained_state_dict = checkpoint["model_state_dict"]
     print("CHECKPOINT", checkpoint_file)
-    from pprint import pprint
-
     print("KEYS", checkpoint["model_state_dict"].keys())
     try:
         model.load_state_dict(pretrained_state_dict)

@@ -104,7 +104,7 @@ class CodeEncoderLSTM(nn.Module):
 
     def forward(self, x, lengths, no_project_override=False):
         self.encoder.flatten_parameters()
-        B, T = x.size(0), x.size(1)
+        _, T = x.size(0), x.size(1)
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config["d_model"])
         src_emb = self.pos_encoder(src_emb)
 

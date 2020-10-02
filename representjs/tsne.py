@@ -7,8 +7,7 @@ import torch
 import tqdm
 
 from models.code_moco import CodeMoCo
-from models.code_mlm import CodeMLM
-from representjs import RUN_DIR, CSNJS_DIR, DATA_DIR
+from representjs import CSNJS_DIR, DATA_DIR
 
 DEFAULT_CSNJS_TRAIN_FILEPATH = str(CSNJS_DIR / "javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz")
 DEFAULT_SPM_UNIGRAM_FILEPATH = str(CSNJS_DIR / "csnjs_8k_9995p_unigram_url.model")
@@ -36,12 +35,6 @@ def embed_coco(checkpoint, data_path, spm_filepath=DEFAULT_SPM_UNIGRAM_FILEPATH,
     model.cuda()
     model.eval()
 
-    def make_dataset(l):
-        return embed_x
-
-    print(df)
-    print(data_path)
-
     out_rows = []
     with torch.no_grad():
         for row_idx in tqdm.tqdm(list(range(len(df))), desc="Table"):
@@ -64,4 +57,4 @@ def embed_coco(checkpoint, data_path, spm_filepath=DEFAULT_SPM_UNIGRAM_FILEPATH,
 
 
 if __name__ == "__main__":
-    fire.Fire({"embed_coco": embed_coco, "embed_bert": embed_bert})
+    fire.Fire({"embed_coco": embed_coco})

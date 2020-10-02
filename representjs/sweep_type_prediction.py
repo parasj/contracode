@@ -60,7 +60,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_c
             # Compute average loss
             total_loss = 0
             num_examples = 0
-            pbar = tqdm.tqdm(loader, desc=f"evalaute")
+            pbar = tqdm.tqdm(loader, desc="evalaute")
             for X, lengths, output_attn, labels in pbar:
                 if use_cuda:
                     X, lengths, output_attn, labels = X.cuda(), lengths.cuda(), output_attn.cuda(), labels.cuda()
@@ -368,7 +368,7 @@ def train(
             if eval_metric < min_eval_metric:
                 logger.info(f"New best evaluation metric: prev {min_eval_metric:.4f} > new {eval_metric:.4f}")
                 min_eval_metric = eval_metric
-                model_file = run_dir / f"ckpt_best.pth"
+                model_file = run_dir / "ckpt_best.pth"
             else:
                 model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             logger.info(f"Saving checkpoint to {model_file}...")

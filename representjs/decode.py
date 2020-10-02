@@ -84,7 +84,7 @@ def beam_search_decode_eos(model, X, X_lengths, sp: spm.SentencePieceProcessor, 
             # seleck k best per batch item
             topk_scores, topk_idx = torch.topk(beam_scores, k, dim=1, sorted=True)
             topk_Y = torch.gather(beam_Y, 1, topk_idx.unsqueeze(-1).expand(B, k, max_decode_len))
-            topk_Y_lenghts = torch.gather(beam_Y_lengths, 1, topk_idx.unsqueeze(-1).expand(B, k))
+            topk_Y_lengths = torch.gather(beam_Y_lengths, 1, topk_idx.unsqueeze(-1).expand(B, k))
             # set beam
             sequences = [(topk_Y[:, j, :], topk_Y_lengths[:, j, :], topk_scores[:, j]) for j in range(k)]
             # TODO: exit early if all sentences in all beam sequences contain </s>

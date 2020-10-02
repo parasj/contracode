@@ -13,9 +13,7 @@ import pandas as pd
 import pyarrow.feather as feather
 from typing import Optional
 from tqdm.contrib.concurrent import thread_map
-from tqdm import tqdm
 import torch
-import torch.nn as nn
 from torch.utils.data.dataset import Dataset
 
 from transformers import (
@@ -23,13 +21,9 @@ from transformers import (
     CONFIG_MAPPING,
     AutoConfig,
     AutoModelWithLMHead,
-    AutoTokenizer,
     DataCollatorForLanguageModeling,
     DataCollatorForPermutationLanguageModeling,
     HfArgumentParser,
-    LineByLineTextDataset,
-    PreTrainedTokenizer,
-    TextDataset,
     Trainer,
     TrainingArguments,
     set_seed,
