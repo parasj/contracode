@@ -74,7 +74,7 @@ Commands to reproduce key type prediction results are provided below. In you are
 </details>
 
 ### Type prediction with an LSTM (pretrained with ContraCode)
-*Evaluate* our finetuned Bidirectional LSTM (Table 2, `DeepTyper d=512 + ContraCode; MoCo (hidden), 20k`):
+*Evaluate* our finetuned Bidirectional LSTM (Table 2, `DeepTyper with ContraCode pre-training`):
 ```
 python representjs/type_prediction.py eval --eval_filepath data/types/test_projects_gold_filtered.json --type_vocab_filepath data/types/target_wl --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model --num_workers 4 --batch_size 1 --max_seq_len -1 --no_output_attention True --encoder_type lstm --n_encoder_layers 2 --resume_path data/ft/ckpt_lstm_ft_types.pth
 ```
@@ -85,7 +85,7 @@ python representjs/type_prediction.py train --run_name types_contracode --train_
 ```
 
 ### Type prediction with a Transformer (pretrained with ContraCode)
-*Evaluate* our finetuned Transformer (Table 2, `Transformer + ContraCode; MoCo, 240k steps`):
+*Evaluate* our finetuned Transformer (Table 2, `Transformer with ContraCode pre-training`):
 ```
 python representjs/type_prediction.py eval --eval_filepath data/types/test_projects_gold_filtered.json --type_vocab_filepath data/types/target_wl --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model --num_workers 4 --batch_size 1 --max_seq_len -1 --resume_path data/pretrain/ckpt_transformer_ft_types.pth
 ```
@@ -96,7 +96,7 @@ python representjs/type_prediction.py train --run_name types_contracode_transfor
 ```
 
 ### Type prediction with a hybrid Transformer (pretraining with both MLM and ContraCode)
-*Evaluate* our finetuned hybrid Transformer (Table 2, `RoBERTa + ContraCode; MLM + MoCo, 240k steps`):
+*Evaluate* our finetuned hybrid Transformer (Table 2, `Transformer (RoBERTa MLM pre-training) with ContraCode pre-training`):
 ```
 python representjs/type_prediction.py eval --eval_filepath data/types/test_projects_gold_filtered.json --type_vocab_filepath data/types/target_wl --spm_filepath data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model --num_workers 4 --batch_size 1 --max_seq_len -1 --resume_path data/ft/ckpt_transformer_hybrid_ft_types.pth
 ```
@@ -107,7 +107,7 @@ python representjs/type_prediction.py train --run_name types_hybrid_transformer 
 ```
 
 ## Finetuning and evaluating on downstream method naming task
-*Evaluate* (Table 1, `Transformer + ContraCode; MoCo, 20k steps`):
+*Evaluate* (Table 3, `Transformer + ContraCode + augmentation`):
 ```
 python representjs/main.py test --batch_size 64 --num_workers 8 --n_decoder_layers 4 \
   --checkpoint_file data/ft/ckpt_transformer_ft_names.pth \
