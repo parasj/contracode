@@ -129,6 +129,7 @@ def pretrain(
     min_alternatives=1,
     #
     # Model
+    resume_path: str = "",
     encoder_type: str = "transformer",
     lstm_project_mode: str = "hidden",
     n_encoder_layers: int = 6,
@@ -282,6 +283,20 @@ def pretrain_worker(gpu, ngpus_per_node, config):
     )
     sched = get_linear_schedule_with_warmup(optimizer, config["warmup_steps"], config["num_steps"])
 
+    # Load checkpoint
+    if config["resume_path"]:
+        logger.info(f"Loading parameters from {config['resume_path']}")
+        # configure map_location properly
+        map_location = {'cuda:%d' % 0: 'cuda:%d' % config["rank"]}
+        checkpoint = torch.load(config["resume_path"], map_location=map_location)
+        model.module.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        start_epoch = checkpoint["epoch"] + 1
+        start_global_step = checkpoint["global_step"]
+    else:
+        start_epoch = 1
+        start_global_step = 0
+
     # Setup data
     train_dataset = PrecomputedDataset(
         config["train_filepath"],
@@ -307,7 +322,10 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # Train
     global_step = 0
-    for epoch in tqdm.trange(1, config["num_epochs"] + 1, desc="training", unit="epoch", leave=False):
+    while global_step < start_global_step:
+        sched.step()
+        global_step += 1
+    for epoch in tqdm.trange(start_epoch, config["num_epochs"] + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         train_sampler.set_epoch(epoch)
         model.train()

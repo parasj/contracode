@@ -109,7 +109,7 @@ class CodeEncoderLSTM(nn.Module):
         src_emb = self.pos_encoder(src_emb)
 
         # Compute sequence lengths and pack src_emb
-        src_emb_packed = torch.nn.utils.rnn.pack_padded_sequence(src_emb, lengths, enforce_sorted=False)
+        src_emb_packed = torch.nn.utils.rnn.pack_padded_sequence(src_emb, lengths.cpu(), enforce_sorted=False)
         out, (h_n, c_n) = self.encoder(src_emb_packed)  # TxBxD
         out, _ = torch.nn.utils.rnn.pad_packed_sequence(out)
         if out.size(0) != T:
