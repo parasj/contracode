@@ -296,6 +296,7 @@ def train(
     wandb.log(eval_metrics, step=global_step)
     wandb.log({k + "_max": v for k, v in max_eval_metrics.items()}, step=global_step)
 
+
     for epoch in tqdm.trange(epoch + 1, num_epochs + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         model.train()
