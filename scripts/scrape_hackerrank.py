@@ -7,7 +7,7 @@ import urllib.request
 
 from tqdm import tqdm
 
-HACKER_TOKEN = "BAhbCFsGaQNa8ZpJIiIkMmEkMTAkcDF5QjJ4UDJVcGhCUGhtNzFrSUF4dQY6BkVUSSIWMTYwNTA0MzAyMy44NTg2NjQGOwBG--d3b4ed2afa6bce50168fc3a997c2fe79b45b9337"
+HACKER_TOKEN = "BAhbCFsGaQNa8ZpJIiIkMmEkMTAkcDF5QjJ4UDJVcGhCUGhtNzFrSUF4dQY6BkVUSSIXMTYwNTgzNTI1NS40MzkyODE1BjsARg%3D%3D--88e843ba54ff6e695bb7c9826b09489ca106aaf8"
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36'
 
 
@@ -38,6 +38,7 @@ def get_challenge_submissions(challenge, language=None, limit=50, per_page_limit
     def get_solution_url(challenge, username):
         return f"https://www.hackerrank.com/rest/contests/master/challenges/{challenge}/hackers/{username}/download_solution"
     
+    tqdm.write("Unlocking program")
     _ = fetch_hackerrank_url(get_unlock_url(challenge))
 
     solution_urls = []
@@ -52,7 +53,7 @@ def get_challenge_submissions(challenge, language=None, limit=50, per_page_limit
                 solution_urls.append(sol)
         if len(solution_hacker_set) == nsol_count:  # early return if no new solutions
             return solution_urls
-        time.sleep(0.25)
+        time.sleep(1)
     return solution_urls
 
 
@@ -72,7 +73,7 @@ def get_challenge_list(track, limit=500, per_page_limit=50):
                 tracks.append(challenge)
         if ntrack_count == len(track_id_set):  # early return
             return tracks
-        time.sleep(0.25)
+        time.sleep(1)
     return tracks
 
 
