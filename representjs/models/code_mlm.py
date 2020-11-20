@@ -41,7 +41,7 @@ class CodeMLM(nn.Module):
 
 
 class CodeContrastiveMLM(CodeMoCo):
-    def __init__(self, n_tokens, d_model=512, d_rep=128, K=61440, m=0.999, T=0.07, pad_id=0, encoder_args={}):
+    def __init__(self, n_tokens, d_model=512, d_rep=128, K=61440, m=0.999, T=0.07, pad_id=0, **encoder_args):
         super().__init__(n_tokens, d_model=d_model, d_rep=d_rep, K=K, m=m, T=T, pad_id=pad_id)
         self.n_tokens = n_tokens
         self.d_model = d_model
@@ -57,10 +57,11 @@ class CodeContrastiveMLM(CodeMoCo):
         logits = torch.matmul(features, self.encoder_q.embedding.weight.transpose(0, 1)).view(L, B, self.n_tokens)  # [L, B, ntok]
         return torch.transpose(logits, 0, 1).view(B, L, self.n_tokens)  # [B, T, ntok]
 
-    def moco_forward(self, im_q, im_k):  # logits, labels
-        return super().forward(im_q, im_k)
+    def moco_forward(self, im_q, im_k, lengths_q, lengths_k):  # logits, labels
+        return super().forward(im_q, im_k, lengths_q, lengths_k)
 
     def forward(self, im_q, im_k):
         predicted_masked_tokens = self.mlm_forward(im_q)
-        moco_logits, moco_targets = self.moco_forward(im_q, im_k)
+        moco_logits, moco_targets = self.moco_forward(im_q, im_k, None, None)
         return predicted_masked_tokens, moco_logits, moco_targets
+

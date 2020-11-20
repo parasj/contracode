@@ -164,3 +164,4 @@ class CodeMoCo(MoCoTemplate):
             logits, targets
         """
         return super().forward(im_q, im_k, lengths_q, lengths_k)
+
