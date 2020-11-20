@@ -12,7 +12,7 @@ DEFAULT_LOCAL_BASE = str((Path(__file__).parent.parent / "data").resolve())
 def dl_cmds(dataset_path: str, extract=False, LOCAL_BASE=DEFAULT_LOCAL_BASE):
     remote_path = os.path.join(REMOTE_BASE, dataset_path)
     cache_path = (SHARED_BASE / dataset_path).resolve()
-    local_path = (LOCAL_BASE / dataset_path).resolve()
+    local_path = (Path(LOCAL_BASE) / dataset_path).resolve()
     local_path.parent.mkdir(parents=True, exist_ok=True)
 
     cmds = []
