@@ -77,6 +77,8 @@ class PrecomputedDataset(torch.utils.data.Dataset):
                 while j == i:
                     j = np.random.randint(n_alt)
             return self.encode(alternatives[i]), self.encode(alternatives[j])
+        elif self.program_mode == "all_alternatives":
+            return [self.encode(alt) for alt in alternatives]
         else:
             raise ValueError(f"Invalid program mode {self.program_mode}")
 

@@ -399,7 +399,7 @@ def eval(
     use_cuda: bool = True,
     seed: int = 0,
 ):
-    """Train model"""
+    """Evaluate model"""
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
