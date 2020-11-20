@@ -69,6 +69,7 @@ class HackerRankAPI:
                 return data
     
     def fetch_hackerrank_url(self, url, json_decode=False):
+        time.sleep(1)
         headers = {
             'user-agent': str(random.choice(self.user_agents)),
             'cookie': f'_hrank_session={self.hr_session}; hackerrank_mixpanel_token=826cd42f-383b-404d-956d-73ca0a128c7a; hrc_l_i=T; metrics_user_identifier=9af15a-f3ca15647ccd70ff12c935ba95dd57780a549a3f'
