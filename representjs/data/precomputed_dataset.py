@@ -6,8 +6,7 @@ import numpy as np
 import torch
 from loguru import logger
 
-from data.util import Timer
-from data.util import normalize_program
+from data.util import Timer, normalize_program, EncodeAsIds
 
 
 class PrecomputedDataset(torch.utils.data.Dataset):
@@ -84,14 +83,5 @@ class PrecomputedDataset(torch.utils.data.Dataset):
 
     def encode(self, program):
         program = normalize_program(program)
-
-        # Encode as ids with sentencepiece
-        if self.subword_regularization_alpha:
-            # using subword regularization: https://arxiv.org/pdf/1804.10959.pdf
-            # NOTE: what is the second argument here (-1)?
-            program = self.sp.SampleEncodeAsIds(program, -1, self.subword_regularization_alpha)
-        else:
-            # using the best decoding
-            program = self.sp.EncodeAsIds(program)
-
+        program = EncodeAsIds(self.sp, self.subword_regularization_alpha, program)
         return torch.LongTensor([self.bos_id] + program[: (self.max_length - 2)] + [self.eos_id])

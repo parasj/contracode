@@ -104,6 +104,8 @@ class CodeEncoderLSTM(nn.Module):
                 self.project_layer = nn.Sequential(nn.Linear(project_in, d_model), nn.ReLU(), nn.Linear(d_model, d_rep))
             # elif project == "hidden_identity":
             #     pass
+            elif project == "hidden_identity":
+                pass
             else:
                 raise ValueError(f"Unknown value '{project}' for CodeEncoderLSTM project argument")
         # NOTE: We use the default PyTorch intialization, so no need to reset parameters.
@@ -112,6 +114,7 @@ class CodeEncoderLSTM(nn.Module):
         self.encoder.flatten_parameters()
         _, T = x.size(0), x.size(1)
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config["d_model"])
+        print("Before pos encode, src_emb shape", src_emb.shape, "x shape", x.shape)
         src_emb = self.pos_encoder(src_emb)
 
         # Compute sequence lengths and pack src_emb
@@ -144,9 +147,11 @@ class CodeEncoderLSTM(nn.Module):
         elif self.config["project"] == "hidden":
             # h_n is n_layers*n_directions x B x d_model
             rep = torch.flatten(h_n.transpose(0, 1), start_dim=1)
-        # elif self.config["project"] == "hidden_identity":
-        #     return torch.flatten(h_n.transpose(0, 1), start_dim=1)
+        elif self.config["project"] == "hidden_identity":
+            return torch.flatten(h_n.transpose(0, 1), start_dim=1)
         else:
             raise ValueError
 
+        # NOTE(ajayj): comment this out and return rep to compute t-SNE representations
         return self.project_layer(rep)
+        # return rep
