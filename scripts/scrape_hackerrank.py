@@ -131,7 +131,7 @@ def get_challenge_submissions(challenge, session=DEFAULT_SESSION, language='java
     for sol in tqdm(solution_urls, desc="Downloading URLs", leave=False):
         time.sleep(.5)
         sol['src'] = api.download_solution(challenge, sol['hacker'])
-        ext = sol['language'] if sol['language'] is not 'javascript' else 'js'
+        ext = sol['language'] if sol['language'] != 'javascript' else 'js'
         with (download_dir / f"{sol['score']}_{sol['hacker_id']}.{ext}").open('w') as f:
             f.write(sol['src'])
     
