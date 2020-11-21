@@ -67,7 +67,7 @@ class TypeTransformer(nn.Module):
             raise RuntimeError("the batch number of src_tok_ids and output_attention must be equal")
 
         # Encode
-        memory = self.encoder(src_tok_ids, lengths)  # LxBxD
+        memory, _ = self.encoder(src_tok_ids, lengths)  # LxBxD
         memory = memory.transpose(0, 1)  # BxLxD
 
         if output_attention is not None:

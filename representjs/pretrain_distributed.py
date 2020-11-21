@@ -134,6 +134,7 @@ def pretrain(
     lstm_project_mode: str = "hidden",
     n_encoder_layers: int = 6,
     d_model: int = 512,
+    n_head: int = 8,
     #
     # Optimization
     num_epochs: int = 100,
@@ -154,6 +155,9 @@ def pretrain(
     use_cuda: bool = True,
     seed: int = 0,
 ):
+    print("L:", n_encoder_layers, type(n_encoder_layers))
+    print("H:", d_model, type(d_model))
+    print("A:", n_head, type(n_head))
     run_name = str(run_name)  # support numerical run ids
     slurm_job_id = os.environ.get("SLURM_JOB_ID")
     slurm_job_hostname = os.environ.get("SLURM_JOB_NODELIST")
@@ -241,6 +245,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
 
     # Create model
     if config["loss_mode"] == "infonce":
+        # TODO(ajay): Support n_head argument, check how d_model is being used (why not in encoder config dict?)
         model = CodeMoCo(
             sp.GetPieceSize(),
             pad_id=pad_id,
@@ -253,10 +258,14 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         )
         logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
     elif config["loss_mode"] == "mlm":
-        model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id, encoder_type=config["encoder_type"], n_encoder_layers=config["n_encoder_layers"])
+        model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id, encoder_type=config["encoder_type"],
+                n_encoder_layers=config["n_encoder_layers"], d_model=config["d_model"],
+                n_head=config["n_head"], d_ff=4 * config["d_model"])
         logger.info(f"Created CodeMLM model with {count_parameters(model)} params")
     elif config["loss_mode"] == "hybrid":
-        model = CodeContrastiveMLM(sp.GetPieceSize(), pad_id=pad_id)
+        model = CodeContrastiveMLM(sp.GetPieceSize(), pad_id=pad_id,
+                n_encoder_layers=config["n_encoder_layers"], d_model=config["d_model"],
+                n_head=config["n_head"], d_ff=4 * config["d_model"])
         logger.info(f"Created CodeContrastiveMLM model with {count_parameters(model)} params")
     else:
         raise ValueError(f"Bad loss mode {config['loss_mode']}")

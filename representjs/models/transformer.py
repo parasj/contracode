@@ -46,7 +46,7 @@ class TransformerModel(nn.Module):
             raise RuntimeError("the batch number of src_tok_ids and tgt_tok_ids must be equal")
 
         # Encode
-        memory = self.encoder(src_tok_ids)
+        memory, _ = self.encoder(src_tok_ids)
 
         # Decode, using the same embedding and positional encoding as the encoder
         tgt_emb = self.encoder.embedding(tgt_tok_ids).transpose(0, 1) * math.sqrt(self.config["d_model"])

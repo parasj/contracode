@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=pretrain_dist_bert_nonaug
-#SBATCH --output=/home/eecs/paras/slurm/coderep/%j_pretrain_bert_nonaug.log
+#SBATCH --job-name=contrastive_pretrain_dist_hybrid
+#SBATCH --output=/home/eecs/paras/slurm/coderep/%j_pretrain_hybrid.log
 #SBATCH --ntasks=1
 #SBATCH --mem=400000
-#SBATCH --time=125:00:00
+#SBATCH --time=250:00:00
 #SBATCH --exclude=atlas,blaze,r16
 
 set -x
@@ -41,27 +41,22 @@ echo "FREE_PORT = $FREE_PORT"
 # load data to cache
 mkdir -p $DATA_CACHE
 chmod 755 $DATA_CACHE
-rsync -avhW --no-compress --progress /work/paras/code/contracode/data/codesearchnet_javascript $DATA_CACHE
-if [ ! -f "$DATA_CACHE/codesearchnet_javascript/javascript_augmented.pickle" ]; then
-    (cd "$DATA_CACHE/codesearchnet_javascript" && gunzip -k "$DATA_CACHE/codesearchnet_javascript/javascript_augmented.pickle.gz")
-fi
-if [ ! -f "$DATA_CACHE/codesearchnet_javascript/javascript_nonaugmented_train.pickle" ]; then
-  (cd "$DATA_CACHE/codesearchnet_javascript" && gunzip -k "$DATA_CACHE/codesearchnet_javascript/javascript_nonaugmented_train.pickle.gz")
-fi
+# rsync -avhW --no-compress --progress /work/paras/code/contracode/data/codesearchnet_javascript $DATA_CACHE
+# if [ ! -f "$DATA_CACHE/codesearchnet_javascript/javascript_augmented.pickle" ]; then
+#     (cd "$DATA_CACHE/codesearchnet_javascript" && gunzip -k "$DATA_CACHE/codesearchnet_javascript/javascript_augmented.pickle.gz")
+# fi
 
 # set up experiment dependencies
-cd /work/paras/code/contracode/
+cd /work/paras/code/contracode
 pip install torch
 pip install -e .
+HOROVOD_WITH_PYTORCH=1 pip install horovod[pytorch]
 npm install
 
 # run train script
-python representjs/pretrain_distributed.py $RUNNAME --num_epochs=200 --batch_size=$BATCHSIZE --lr=$LR --num_workers=8 \
-    --subword_regularization_alpha 0. --program_mode identity --loss_mode mlm --save_every 5000 \
-    --train_filepath="$DATA_CACHE/codesearchnet_javascript/javascript_nonaugmented_train.pickle" \
+horovodrun -np $NUMGPU python representjs/pretrain_horovod.py $RUNNAME --num_epochs=200 --batch_size=$BATCHSIZE --lr=$LR --num_workers=16 \
+    --subword_regularization_alpha $SW_REG_ALPHA --program_mode contrastive --loss_mode hybrid --save_every 5000 \
+    --train_filepath="$DATA_CACHE/codesearchnet_javascript/javascript_augmented.pickle" \
     --spm_filepath="$DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model" \
-    --min_alternatives 1 --dist_url "tcp://localhost:$FREE_PORT" --rank 0 \
-    --n_encoder_layers $N_ENCODER_LAYERS --d_model $D_MODEL --n_head $N_HEAD
-
-#    --train_filepath="$DATA_CACHE/codesearchnet_javascript/javascript_augmented.pickle" \
+    --min_alternatives 1 --n_encoder_layers $N_ENCODER_LAYERS --d_model $D_MODEL --n_head $N_HEAD --max_length $MAX_LENGTH
 
