@@ -43,10 +43,10 @@ class HackerRankAPI:
         return url
 
     def fetch_hackerrank_url(self, url, json_decode=False):
-        tqdm.write(url)
         headers = {
             'user-agent': str(random.choice(self.user_agents)),
-            'cookie': f'_hrank_session={self.hr_session}; hackerrank_mixpanel_token=826cd42f-383b-404d-956d-73ca0a128c7a; hrc_l_i=T; metrics_user_identifier=9af15a-f3ca15647ccd70ff12c935ba95dd57780a549a3f'
+            'cookie': f'_hrank_session={self.hr_session}; hackerrank_mixpanel_token=826cd42f-383b-404d-956d-73ca0a128c7a; hrc_l_i=T; metrics_user_identifier=9af15a-f3ca15647ccd70ff12c935ba95dd57780a549a3f',
+            'cache-control': 'max-age=0'
         }
         
         response = requests.request("GET", url, headers=headers, data={})
@@ -86,20 +86,21 @@ class HackerRankAPI:
                 if sol['hacker'] not in solution_hacker_set and sol['hacker'] != '[deleted]':
                     assert language is None or sol['language'] == language
                     solution_hacker_set.add(sol['hacker'])
-                    sol['download_url'] = self.download_url(challenge, sol['hacker'])
                     solution_urls.append(sol)
             if len(solution_hacker_set) == nsol_count:  # early return if no new solutions
                 return solution_urls
         return solution_urls
     
-    def download_solution(self, challenge, hacker, primary=False):
-        url = self.download_url(challenge, hacker)
-        if primary:
-            url += '&primary=true'
+    def download_solution(self, sol, challenge):
+        if 'download_link' in sol.keys():
+            url = 'https://www.hackerrank.com' + sol['download_link']
+        else:
+            url = self.download_url(challenge, sol['hacker'])
         try:
             return self.fetch_hackerrank_url(url)
         except Exception as e:
-            tqdm.write(f"ERROR downloading URL {url}, got exception {e}")
+            tqdm.write(f"ERROR downloading URL {url}")
+            tqdm.write(e)
             return None
 
 
@@ -130,15 +131,13 @@ def get_challenge_submissions(challenge, session=DEFAULT_SESSION, language='java
         json.dump(solution_urls, f)
 
     # download URLs
-    for sol in tqdm(solution_urls, desc="Downloading URLs", leave=False):
-        time.sleep(.5)
-        sol['src'] = api.download_solution(challenge, sol['hacker'])
-        if sol['src'] == None:
-            tqdm.write('Attempting download again')
-            sol['src'] = api.download_solution(challenge, sol['hacker'], primary=True)
-        ext = sol['language'] if sol['language'] != 'javascript' else 'js'
-        with (download_dir / f"{sol['score']}_{sol['hacker_id']}.{ext}").open('w') as f:
-            f.write(sol['src'])
+    for sol in tqdm(solution_urls, desc=f"Downloading URLs for challenge {challenge}"):
+        time.sleep(.1)
+        sol['src'] = api.download_solution(sol, challenge)
+        if sol['src'] != None:
+            ext = sol['language'] if sol['language'] != 'javascript' else 'js'
+            with (download_dir / f"{sol['score']}_{sol['hacker_id']}.{ext}").open('w') as f:
+                f.write(sol['src'])
     
     # save final output
     with (challenge_dir / 'challenge_data.json').open('w') as f:
