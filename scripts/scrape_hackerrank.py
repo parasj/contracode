@@ -10,6 +10,8 @@ import fire
 import requests
 from tqdm import tqdm
 
+DEFAULT_SESSION = 'da846953a352396a9985ecac686afac3405fc4e3ac7754794ed3134cbf11f53177b3097f58d795829e354db6de886e24c3d2ea1fed28c7d96759d76be3b210e5'
+
 
 class HackerRankAPI:
     def __init__(self, hr_session):
@@ -99,7 +101,7 @@ class HackerRankAPI:
             return None
 
 
-def get_challenge_list(session, track='algorithms'):
+def get_challenge_list(session=DEFAULT_SESSION, track='algorithms'):
     log_dir = Path(os.path.dirname(os.path.abspath(__file__))) / ".." / "data" / "hackerrank"
     log_dir.mkdir(parents=True, exist_ok=True)
     tracks = HackerRankAPI(session).get_challenge_list(track)
@@ -111,7 +113,7 @@ def get_challenge_list(session, track='algorithms'):
     print("Got", len(challenges), "challenges")
 
 
-def get_challenge_submissions(challenge, session, language='javascript', limit=10):
+def get_challenge_submissions(challenge, session=DEFAULT_SESSION, language='javascript', limit=10):
     log_dir = Path(os.path.dirname(os.path.abspath(__file__))) / ".." / "data" / "hackerrank"
     challenge_dir = log_dir / challenge
     download_dir = challenge_dir / 'src'
