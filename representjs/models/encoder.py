@@ -124,11 +124,11 @@ class CodeEncoderLSTM(nn.Module):
             print("lengths.min()=", lengths.min())
 
         if not no_project_override and self.config["project"]:
-            return self.project(out, h_n)
+            return self.project(out, h_n, lengths=lengths)
 
         return out, h_n
 
-    def project(self, out=None, h_n=None):
+    def project(self, out=None, h_n=None, lengths=None):
         assert self.config["project"]
 
         if self.config["project"] == "sequence_mean":
