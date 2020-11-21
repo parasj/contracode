@@ -1,6 +1,8 @@
+import json
 from pathlib import Path
 import os
 import random
+import tqdm
 
 import fire
 import numpy as np
@@ -546,6 +548,46 @@ def train(
 #             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
 
 
+def split(data_path="data/codeclone/full_data.json", output_dir="data/codeclone/", valid_fraction=0.05, test_fraction=0.1, seed=1):
+    # Read problems and solutions, creating a list of lists
+    all_problems = []
+    with open(data_path, "r") as f:
+        data = json.load(f)
+        for _difficulty, problems in tqdm.tqdm(data.items(), desc="Reading problems and solutions"):
+            for _problem_name, meta in problems.items():
+                # Filter out None programs
+                solutions = list(filter(lambda p: p, meta["srcs"]))
+                if solutions:
+                    all_problems.append(solutions)
+    num_problems = len(all_problems)
+    logger.info("Read {} problems, {} total solutions", num_problems, sum(map(len, all_problems)))
+
+    # Split data
+    np.random.seed(seed)
+    indices = np.random.permutation(num_problems)
+    num_test = int(num_problems * test_fraction)
+    num_valid = int(num_problems * valid_fraction)
+    num_train = num_problems - num_test - num_valid
+    logger.info("Split: {} ({}%) train problems", num_train, num_train / num_problems)
+    logger.info("Split: {} ({}%) valid problems", num_valid, num_valid / num_problems)
+    logger.info("Split: {} ({}%) test problems", num_test, num_test / num_problems)
+    test = [all_problems[i] for i in indices[:num_test]]
+    valid = [all_problems[i] for i in indices[num_test:num_test+num_valid]]
+    train = [all_problems[i] for i in indices[num_test+num_valid:]]
+    assert len(test) == num_test
+    assert len(valid) == num_valid
+    assert len(train) == num_train
+
+    # Write data
+    def write(split_problems, split_name):
+        output_path = os.path.join(output_dir, f"{split_name}_data.json")
+        with open(output_path, "w") as out_f:
+            json.dump(split_problems, out_f)
+        logger.info("Wrote programs to {}", output_path)
+    write(test, "test")
+    write(valid, "valid")
+    write(train, "train")
+
 
 if __name__ == "__main__":
-    fire.Fire({"train": train, "eval": eval})
+    fire.Fire({"train": train, "eval": eval, "split": split})
