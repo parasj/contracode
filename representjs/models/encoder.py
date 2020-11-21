@@ -61,10 +61,16 @@ class CodeEncoder(nn.Module):
         else:
             src_key_padding_mask = None
         out = self.encoder(src_emb, src_key_padding_mask=src_key_padding_mask)  # TxBxD
+
         if not no_project_override and self.config["project"]:
-            return self.project_layer(out.mean(dim=0))
-        else:
-            return out
+            return self.project(out)
+
+        return out, None
+
+    def project(self, out, h_n=None):
+        assert self.config["project"]
+        assert h_n is None  # second argument for compatibility with CodeEncoderLSTM
+        return self.project_layer(out.mean(dim=0))
 
 
 class CodeEncoderLSTM(nn.Module):
@@ -118,23 +124,29 @@ class CodeEncoderLSTM(nn.Module):
             print("lengths.min()=", lengths.min())
 
         if not no_project_override and self.config["project"]:
-            if self.config["project"] == "sequence_mean":
-                # out is T x B x n_directions*d_model
-                rep = out.mean(dim=0)  # B x n_directions*d_model
-            elif self.config["project"] == "sequence_mean_nonpad":
-                out_ = out.transpose(0, 1)  # B x T x n_directions*d_model
-                mask = torch.arange(out_.size(1), device=out_.device).unsqueeze(0).unsqueeze(-1).expand_as(out_) < lengths.unsqueeze(
-                    1
-                ).unsqueeze(2)
-                rep = (out_ * mask.float()).sum(dim=1)  # B x n_directions*d_model
-                rep = rep / lengths.unsqueeze(1).float()
-            elif self.config["project"] == "hidden":
-                # h_n is n_layers*n_directions x B x d_model
-                rep = torch.flatten(h_n.transpose(0, 1), start_dim=1)
-            # elif self.config["project"] == "hidden_identity"
-            #     return torch.flatten(h_n.transpose(0, 1), start_dim=1)
-            else:
-                raise ValueError
-            return self.project_layer(rep)
+            return self.project(out, h_n)
 
-        return out
+        return out, h_n
+
+    def project(self, out=None, h_n=None):
+        assert self.config["project"]
+
+        if self.config["project"] == "sequence_mean":
+            # out is T x B x n_directions*d_model
+            rep = out.mean(dim=0)  # B x n_directions*d_model
+        elif self.config["project"] == "sequence_mean_nonpad":
+            out_ = out.transpose(0, 1)  # B x T x n_directions*d_model
+            mask = torch.arange(out_.size(1), device=out_.device).unsqueeze(0).unsqueeze(-1).expand_as(out_) < lengths.unsqueeze(
+                1
+            ).unsqueeze(2)
+            rep = (out_ * mask.float()).sum(dim=1)  # B x n_directions*d_model
+            rep = rep / lengths.unsqueeze(1).float()
+        elif self.config["project"] == "hidden":
+            # h_n is n_layers*n_directions x B x d_model
+            rep = torch.flatten(h_n.transpose(0, 1), start_dim=1)
+        # elif self.config["project"] == "hidden_identity":
+        #     return torch.flatten(h_n.transpose(0, 1), start_dim=1)
+        else:
+            raise ValueError
+
+        return self.project_layer(rep)
