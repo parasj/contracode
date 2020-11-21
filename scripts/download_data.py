@@ -34,6 +34,7 @@ if __name__ == "__main__":
     parser.add_argument("--skip-csn", action="store_true")
     parser.add_argument("--skip-hf", action="store_true")
     parser.add_argument("--skip-type-prediction", action="store_true")
+    parser.add_argument("--skip-code-clone", action="store_true")
     args = parser.parse_args()
 
     LOCAL_PATH = Path(args.path)
@@ -60,6 +61,9 @@ if __name__ == "__main__":
         cmds.extend(dl_cmds("type_prediction/csnjs_8k_9995p_unigram_url.model", False, LOCAL_PATH))
         cmds.extend(dl_cmds("type_prediction/train_nounk.txt", False, LOCAL_PATH))
         cmds.extend(dl_cmds("type_prediction/valid_nounk.txt", False, LOCAL_PATH))
+    
+    if not args.skip_code_clone:
+        cmds.extend(dl_cmds('codeclone/full_data.json.gz', True, LOCAL_PATH))
 
     cmds.extend(dl_cmds("vocab/8k_bpe/8k_bpe-vocab.txt", False, LOCAL_PATH))
 

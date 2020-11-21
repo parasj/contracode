@@ -83,8 +83,7 @@ class HackerRankAPI:
             nsol_count = len(solution_hacker_set)
             solutions = self.fetch_hackerrank_url(self.get_leaderboard_url(challenge, language='javascript', offset=per_page_limit * i), json_decode=True)
             for sol in solutions['models']:
-                if sol['hacker'] not in solution_hacker_set and sol['hacker'] != '[deleted]':
-                    assert language is None or sol['language'] == language
+                if sol['hacker'] not in solution_hacker_set and sol['hacker'] != '[deleted]' and sol['language'] == language:
                     solution_hacker_set.add(sol['hacker'])
                     solution_urls.append(sol)
             if len(solution_hacker_set) == nsol_count:  # early return if no new solutions
@@ -126,12 +125,11 @@ def get_challenge_submissions(challenge, session=DEFAULT_SESSION, language='java
     api = HackerRankAPI(session)
     api.unlock_challenge(challenge)
     solution_urls = api.get_submission_list(challenge, language, limit=limit)
-    print(f"Got metadata for {len(solution_urls)} solutions")
     with (challenge_dir / 'challenge_data_no_source.json').open('w') as f:
         json.dump(solution_urls, f)
 
     # download URLs
-    for sol in tqdm(solution_urls, desc=f"Downloading URLs for challenge {challenge}"):
+    for sol in tqdm(solution_urls, desc=f"Downloading {len(solution_urls)} URLs for challenge {challenge}"):
         time.sleep(.1)
         sol['src'] = api.download_solution(sol, challenge)
         if sol['src'] != None:
