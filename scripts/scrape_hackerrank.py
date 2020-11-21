@@ -92,8 +92,10 @@ class HackerRankAPI:
                 return solution_urls
         return solution_urls
     
-    def download_solution(self, challenge, hacker):
+    def download_solution(self, challenge, hacker, primary=False):
         url = self.download_url(challenge, hacker)
+        if primary:
+            url += '&primary=true'
         try:
             return self.fetch_hackerrank_url(url)
         except Exception as e:
@@ -131,6 +133,9 @@ def get_challenge_submissions(challenge, session=DEFAULT_SESSION, language='java
     for sol in tqdm(solution_urls, desc="Downloading URLs", leave=False):
         time.sleep(.5)
         sol['src'] = api.download_solution(challenge, sol['hacker'])
+        if sol['src'] == None:
+            tqdm.write('Attempting download again')
+            sol['src'] = api.download_solution(challenge, sol['hacker'], primary=True)
         ext = sol['language'] if sol['language'] != 'javascript' else 'js'
         with (download_dir / f"{sol['score']}_{sol['hacker_id']}.{ext}").open('w') as f:
             f.write(sol['src'])
