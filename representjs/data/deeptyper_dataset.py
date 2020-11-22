@@ -227,6 +227,7 @@ def get_collate_fn(pad_id, no_type_id):
         X = pad_sequence(X, batch_first=True, padding_value=pad_id)
         L = X.size(1)
 
+        # FIXME(ajay): This should come before pad_sequence call
         # Create tensor of sequence lengths, [B]
         lengths = torch.tensor([len(x) for x in X], dtype=torch.long)
 

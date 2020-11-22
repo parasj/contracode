@@ -114,7 +114,6 @@ class CodeEncoderLSTM(nn.Module):
         self.encoder.flatten_parameters()
         _, T = x.size(0), x.size(1)
         src_emb = self.embedding(x).transpose(0, 1) * math.sqrt(self.config["d_model"])
-        print("Before pos encode, src_emb shape", src_emb.shape, "x shape", x.shape)
         src_emb = self.pos_encoder(src_emb)
 
         # Compute sequence lengths and pack src_emb

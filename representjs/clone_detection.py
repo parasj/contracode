@@ -1,16 +1,19 @@
+import gzip
 import json
 from pathlib import Path
 import os
 import random
-import tqdm
+import time
 
 import fire
 import numpy as np
 import sentencepiece as spm
+import textdistance
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
-# from bisect import bisect_right
+import tqdm
+from sklearn.metrics import roc_auc_score, average_precision_score
 
 import torch.nn.functional as F
 import tqdm
@@ -18,17 +21,9 @@ import wandb
 from loguru import logger
 
 from data.util import Timer, normalize_program, EncodeAsIds
-from models.typetransformer import TypeTransformer
+from models.clone import CloneModel
 from representjs import RUN_DIR
 from utils import count_parameters, get_linear_schedule_with_warmup
-
-
-# def find_gt(a, x):
-#     'Find leftmost value greater than x'
-#     i = bisect_right(a, x)
-#     if i != len(a):
-#         return a[i]
-#     raise ValueError
 
 
 class CloneProgramsDataset(torch.utils.data.Dataset):
@@ -41,24 +36,12 @@ class CloneProgramsDataset(torch.utils.data.Dataset):
 
         self.all_solutions = []
         self.set_sizes = []
-        # TODO: actually load real data, with filepath
-
-        # Generate artificial data
-        fake_num_problems = 20
-        fake_num_solutions = 10
-        # from random_word import RandomWords
-        # r = RandomWords()
-        import string
-        def get_random_string(length):
-            letters = string.ascii_lowercase
-            result_str = ''.join(random.choice(letters) for i in range(length))
-            return result_str
-        for i in range(fake_num_problems):
-            solutions = set()
-            for j in range(fake_num_solutions):
-                # solution = " ".join(r.get_random_words(minLength=10, maxLength=max_length))
-                solution = get_random_string(100)
-                solutions.add(solution)
+        # Load data
+        data_file = gzip.open(filepath, "r") if filepath.endswith(".json.gz") else open(filepath, "r")
+        data = json.load(data_file)
+        data_file.close()
+        # Flatten and compute solution set sizes
+        for solutions in data:  # iterate, solutions consists of programs solving the same problem
             self.all_solutions.extend(solutions)
             self.set_sizes.append(len(solutions))
 
@@ -71,7 +54,6 @@ class CloneProgramsDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         program = self.all_solutions[idx]
         return self.encode(program)
-        # problem_idx = find_gt(self.cumulative_sizes, idx)
 
     def encode(self, program):
         program = normalize_program(program)
@@ -136,12 +118,35 @@ class CloneNegativesDataset(ClonePairDataset):
 
 
 def get_pad_collate(pad_id):
+    # def pad_collate(batch):
+    #     X1, X2, labels = zip(*batch)
+
+    #     # Create tensor of sequence lengths, [B]
+    #     lengths1 = torch.tensor([len(x) for x in X1], dtype=torch.long)
+    #     lengths2 = torch.tensor([len(x) for x in X1], dtype=torch.long)
+
+    #     # Pad sequences
+    #     X1 = pad_sequence(X1, batch_first=True, padding_value=pad_id)  # [B, T]
+    #     X2 = pad_sequence(X2, batch_first=True, padding_value=pad_id)  # [B, T]
+
+    #     # Create tensor of labels
+    #     labels = torch.tensor(labels, dtype=torch.long)
+    #     return X1, X2, lengths1, lengths2, labels
+
     def pad_collate(batch):
         X1, X2, labels = zip(*batch)
-        X1 = pad_sequence(X1, batch_first=True, padding_value=pad_id)  # [B, T]
-        X2 = pad_sequence(X2, batch_first=True, padding_value=pad_id)  # [B, T]
+        X = X1 + X2
+
+        # Create tensor of sequence lengths, [2B]
+        lengths = torch.tensor([len(x) for x in X], dtype=torch.long)
+
+        # Pad sequences
+        X = pad_sequence(X, batch_first=True, padding_value=pad_id)  # [2B, T]
+
+        # Create tensor of labels, [B]
         labels = torch.tensor(labels, dtype=torch.long)
-        return X1, X2, labels
+        return X, lengths, labels
+
     return pad_collate
 
 
@@ -171,96 +176,152 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
         return res, deno
 
 
-def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_cuda=True, no_output_attention=False):
+@torch.no_grad()
+def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True):
     model.eval()
-    no_type_id = target_to_id["O"]
-    any_id = target_to_id["$any$"]
 
-    with torch.no_grad():
-        # Accumulate metrics across batches to compute label-wise accuracy
-        num1, num5, num_labels_total = 0, 0, 0
-        num1_any, num5_any, num_labels_any_total = 0, 0, 0
+    with Timer() as t:
+        # Compute average loss
+        total_loss = 0
+        num_examples = 0
+        # Compute ROC AUC, AP
+        y_true = []
+        y_scores = []
+        pbar = tqdm.tqdm(loader, desc="evalaute")
+        for X, lengths, labels in pbar:
+            y_true.append(labels.numpy())
+            if use_cuda:
+                X, lengths, labels = X.cuda(), lengths.cuda(), labels.cuda()
 
-        with Timer() as t:
-            # Compute average loss
-            total_loss = 0
-            num_examples = 0
-            pbar = tqdm.tqdm(loader, desc="evalaute")
-            for X, lengths, output_attn, labels in pbar:
-                if use_cuda:
-                    X, lengths, output_attn, labels = X.cuda(), lengths.cuda(), output_attn.cuda(), labels.cuda()
-                if no_output_attention:
-                    logits = model(X, lengths, None)  # BxLxVocab
-                else:
-                    logits = model(X, lengths, output_attn)  # BxLxVocab
-                # Compute loss
-                loss = F.cross_entropy(logits.transpose(1, 2), labels, ignore_index=no_type_id)
+            # Compute loss
+            similarity = model(X, lengths)  # B
+            loss = F.binary_cross_entropy_with_logits(similarity, labels.float())
 
-                total_loss += loss.item() * X.size(0)
-                num_examples += X.size(0)
-                avg_loss = total_loss / num_examples
+            total_loss += loss.item() * X.size(0)
+            num_examples += X.size(0)
+            avg_loss = total_loss / num_examples
 
-                # Compute accuracy
-                (corr1_any, corr5_any), num_labels_any = accuracy(logits.cpu(), labels.cpu(), topk=(1, 5), ignore_idx=(no_type_id,))
-                num1_any += corr1_any
-                num5_any += corr5_any
-                num_labels_any_total += num_labels_any
+            y_scores.append(similarity.cpu().numpy())
 
-                (corr1, corr5), num_labels = accuracy(logits.cpu(), labels.cpu(), topk=(1, 5), ignore_idx=(no_type_id, any_id))
-                num1 += corr1
-                num5 += corr5
-                num_labels_total += num_labels
+            ytc = np.concatenate(y_true)
+            if ytc.sum() != 0 and ytc.sum() < len(ytc):
+                ysc = np.concatenate(y_scores)
+                roc_auc = roc_auc_score(ytc, ysc)
+                ap_score = average_precision_score(ytc, ysc)
+            else:
+                roc_auc = 0
+                ap_score = 0
+            pbar.set_description(f"evaluate average loss {avg_loss:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f}")
+        
+        # Compute ROC AUC and AP
+        y_true = np.concatenate(y_true)
+        y_scores = np.concatenate(y_scores)
+        roc_auc = roc_auc_score(y_true, y_scores)
+        ap_score = average_precision_score(y_true, y_scores)
 
-                pbar.set_description(
-                    f"evaluate average loss {avg_loss:.4f} num1 {num1_any} num_labels_any_total {num_labels_any_total} avg acc1_any {num1_any / (num_labels_any_total + 1e-6) * 100:.4f}"
-                )
+    logger.debug(f"Loss calculation took {t.interval:.3f}s")
+    return (
+        -roc_auc,
+        {
+            "eval/loss": avg_loss,
+            "eval/roc_auc_score": roc_auc,
+            "eval/ap_score": ap_score,
+            "eval/num_examples": num_examples,
+            "eval/num_positive": np.sum(y_true)
+        },
+    )
 
-        # Average accuracies
-        acc1 = float(num1) / num_labels_total * 100
-        acc5 = float(num5) / num_labels_total * 100
-        acc1_any = float(num1_any) / num_labels_any_total * 100
-        acc5_any = float(num5_any) / num_labels_any_total * 100
 
-        logger.debug(f"Loss calculation took {t.interval:.3f}s")
-        return (
-            -acc1_any,
-            {
-                "eval/loss": avg_loss,
-                "eval/acc@1": acc1,
-                "eval/acc@5": acc5,
-                "eval/num_labels": num_labels_total,
-                "eval/acc@1_any": acc1_any,
-                "eval/acc@5_any": acc5_any,
-                "eval/num_labels_any": num_labels_any_total,
-            },
-        )
+@torch.no_grad()
+def _levenshtein_similarity(a, b):
+    distance = textdistance.levenshtein.distance(a, b)
+    maxlen = max(len(a), len(b))
+    ratio = (maxlen - distance) / float(maxlen)  # similarity ratio
+    return ratio
+
+
+@torch.no_grad()
+def _evaluate_edit_distance(loader, sp, edit_distance_mode="tokens"):
+    assert edit_distance_mode == "tokens"
+
+    with Timer() as t:
+        # Compute average loss
+        total_similarity = 0
+        num_examples = 0
+        # Compute ROC AUC, AP
+        y_true = []
+        y_scores = []
+        pbar = tqdm.tqdm(loader, desc="evalaute")
+        for X, lengths, labels in pbar:
+            # Compute loss
+            X = X.view(2, X.size(0) // 2, X.size(1))
+            lengths = lengths.view(2, lengths.size(0) // 2)
+            similarity = np.zeros(X.size(1), dtype=np.float32)
+            for i in range(X.size(1)):
+                a_len = lengths[0, i]
+                b_len = lengths[1, i]
+                a = list(X[0, i].numpy())[1:a_len-1]  # remove bos_id, eos_id and padding
+                b = list(X[1, i].numpy())[1:b_len-1]  # remove bos_id, eos_id and padding
+                similarity[i] = _levenshtein_similarity(a, b)  # B
+
+            total_similarity += np.sum(similarity)
+            num_examples += X.size(1)
+            avg_similarity = total_similarity / num_examples
+
+            y_true.append(labels.numpy())
+            y_scores.append(similarity)
+
+            ytc = np.concatenate(y_true)
+            if ytc.sum() != 0 and ytc.sum() < len(ytc):
+                ysc = np.concatenate(y_scores)
+                roc_auc = roc_auc_score(ytc, ysc)
+                ap_score = average_precision_score(ytc, ysc)
+            else:
+                roc_auc = 0
+                ap_score = 0
+            pbar.set_description(f"evaluate average similarity {avg_similarity:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f}")
+        
+        # Compute ROC AUC and AP
+        y_true = np.concatenate(y_true)
+        y_scores = np.concatenate(y_scores)
+        roc_auc = roc_auc_score(y_true, y_scores)
+        ap_score = average_precision_score(y_true, y_scores)
+
+    logger.debug(f"Loss calculation took {t.interval:.3f}s")
+    return (
+        -roc_auc,
+        {
+            "eval/roc_auc_score": roc_auc,
+            "eval/ap_score": ap_score,
+            "eval/num_examples": num_examples,
+            "eval/num_positive": np.sum(y_true)
+        },
+    )
 
 
 def train(
     run_name: str,
     # Data
-    train_filepath: str,
-    eval_filepath: str,
-    spm_filepath: str,
+    train_filepath: str="data/codeclone/train_data.json",
+    eval_filepath: str="data/codeclone/valid_data.json",
+    spm_filepath: str="data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
     num_workers=1,
     max_seq_len=1024,
     max_eval_seq_len=1024,
     run_dir=RUN_DIR,
     balance_negatives=False,
-    # max_positive_pairs=-1,
-    # max_negative_pairs=-1,
     # Model
     resume_path: str = "",
     pretrain_resume_path: str = "",
     pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
-    pretrain_resume_project: bool = False,
     encoder_type: str = "transformer",
     n_encoder_layers: int = 6,
     d_model: int = 512,
+    critic_type: str = "bilinear_identity",
+    critic_bilinear_rank: int = None,
     # Optimization
     train_decoder_only: bool = False,
     num_epochs: int = 100,
-    save_every: int = 10,
     batch_size: int = 256,
     lr: float = 8e-4,
     adam_beta1: float = 0.9,
@@ -269,6 +330,10 @@ def train(
     weight_decay: float = 0,
     warmup_steps: int = 5000,
     num_steps: int = 200000,
+    # Evaluation
+    save_every_steps: int = 5000,
+    score_every_steps: int = 10,  # Interval for train ROC AUC, AP score
+    evaluate_every_steps: int = 1250,
     # Augmentations
     subword_regularization_alpha: float = 0,
     # Computational
@@ -276,6 +341,8 @@ def train(
     seed: int = 1,
 ):
     """Train model"""
+    assert save_every_steps % evaluate_every_steps == 0
+
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -302,14 +369,22 @@ def train(
     logger.info(f"Training data path {train_filepath}")
     train_programs = CloneProgramsDataset(train_filepath, sp, subword_regularization_alpha)
     train_positives = ClonePositivesDataset(train_programs)
-    if balance_negatives:
-        train_negatives = CloneNegativesDataset(train_programs, len(train_positives), seed)
-    else:
-        train_negatives = CloneNegativesDataset(train_programs)
+    train_negatives = CloneNegativesDataset(train_programs)
     train_dataset = torch.utils.data.ConcatDataset([train_positives, train_negatives])
+    if balance_negatives:
+        positive_weight = 1 / len(train_programs)
+        negative_weight = 1 / len(train_negatives)
+        weights = torch.cat([
+            torch.zeros(len(train_programs)) + positive_weight,
+            torch.zeros(len(train_negatives)) + negative_weight
+        ])
+        sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))
+    else:
+        sampler = None
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True, collate_fn=pad_collate
+        train_dataset, batch_size=batch_size, shuffle=not balance_negatives, num_workers=num_workers,
+        drop_last=True, collate_fn=pad_collate, sampler=sampler
     )
 
     # Create eval dataset and dataloader
@@ -330,9 +405,10 @@ def train(
         encoder_type=encoder_type,
         n_encoder_layers=n_encoder_layers,
         d_model=d_model,
-        n_hidden_output=n_hidden_output,
+        critic_type=critic_type,
+        bilinear_rank=critic_bilinear_rank
     )
-    logger.info(f"Created CloneModel {encoder_type} with {count_parameters(model)} params")
+    logger.info(f"Created CloneModel {encoder_type}, {critic_type} with {count_parameters(model)} params")
 
     # Load pretrained checkpoint
     if pretrain_resume_path:
@@ -343,7 +419,7 @@ def train(
         checkpoint = torch.load(pretrain_resume_path)
         pretrained_state_dict = checkpoint["model_state_dict"]
         encoder_state_dict = {}
-        output_state_dict = {}
+        # output_state_dict = {}
         assert pretrain_resume_encoder_name in ["encoder_k", "encoder_q", "encoder"]
 
         for key, value in pretrained_state_dict.items():
@@ -351,13 +427,7 @@ def train(
                 remapped_key = key[len(pretrain_resume_encoder_name + ".") :]
                 logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
                 encoder_state_dict[remapped_key] = value
-            # if key.startswith(pretrain_resume_encoder_name + ".") and "project_layer.0." in key and pretrain_resume_project:
-            #     remapped_key = key[len(pretrain_resume_encoder_name + ".project_layer.") :]
-            #     logger.debug(f"Remapping checkpoint project key {key} to output key {remapped_key}. Value mean: {value.mean().item()}")
-            #     output_state_dict[remapped_key] = value
         model.encoder.load_state_dict(encoder_state_dict)
-        # TODO: check for head key rather than output for MLM
-        model.output.load_state_dict(output_state_dict, strict=False)
         logger.info(f"Loaded state dict from {pretrain_resume_path}")
 
     # Set up optimizer
@@ -383,172 +453,203 @@ def train(
     # Eval metric history
     max_eval_metrics = {}
 
-    # Evaluate initial metrics
-    logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-    eval_metric, eval_metrics = _evaluate(
-        model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
-    )
+    # Initial evaluation
+    logger.info(f"Evaluating model initially ({global_step} steps)...")
+    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, use_cuda=use_cuda)
     for metric, value in eval_metrics.items():
-        logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
+        logger.info(f"Evaluation {metric} initial ({global_step} steps): {value:.4f}")
         max_eval_metrics[metric] = value
     eval_metrics["epoch"] = epoch
     wandb.log(eval_metrics, step=global_step)
     wandb.log({k + "_max": v for k, v in max_eval_metrics.items()}, step=global_step)
 
-    # TODO: Update below to handle single logit
-
     for epoch in tqdm.trange(epoch + 1, num_epochs + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         model.train()
+        model.module.encoder.eval()
         pbar = tqdm.tqdm(train_loader, desc=f"epoch {epoch}")
-        for X1, X2, lengths1, lengths2, labels in pbar:
+        for X, lengths, labels in pbar:
             if use_cuda:
-                X1, X2, lengths1, lengths2, labels = X1.cuda(), X2.cuda(), lengths1.cuda(), lengths2.cuda(), labels.cuda()
+                X, lengths, labels = X.cuda(), lengths.cuda(), labels.cuda()
             optimizer.zero_grad()
-            logits = model(X1, X2, lengths1, lengths2)  # BxLxVocab
-            # loss = F.cross_entropy(logits.transpose(1, 2), labels, ignore_index=no_type_id)
-            # TODO: logistic loss!
+            similarity = model(X, lengths)  # B
+            loss = F.binary_cross_entropy_with_logits(similarity, labels.float())
             loss.backward()
             optimizer.step()
             scheduler.step()
 
-            # Compute accuracy in training batch
-            (corr1_any, corr5_any), num_labels_any = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id,))
-            acc1_any, acc5_any = corr1_any / num_labels_any * 100, corr5_any / num_labels_any * 100
-            (corr1, corr5), num_labels = accuracy(logits, labels, topk=(1, 5), ignore_idx=(no_type_id, any_id))
-            acc1, acc5 = corr1 / num_labels * 100, corr5 / num_labels * 100
-
-            # Log loss
-            global_step += 1
-            wandb.log(
-                {
+            with torch.no_grad():
+                train_metrics = {
                     "epoch": epoch,
                     "train/loss": loss.item(),
-                    "train/acc@1": acc1,
-                    "train/acc@5": acc5,
-                    "train/acc@1_any": acc1_any,
-                    "train/acc@5_any": acc5_any,
                     "lr": scheduler.get_last_lr()[0],
-                },
-                step=global_step,
-            )
-            pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
+                    "train/labels_mean": labels.float().mean().item()
+                }
 
-        # Evaluate
-        logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-        eval_metric, eval_metrics = _evaluate(
-            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
+                # Compute scores in training batch
+                if global_step % score_every_steps == 0:
+                    y_true = labels.cpu().numpy()
+                    y_scores = similarity.cpu().numpy()
+                    roc_auc = roc_auc_score(y_true, y_scores)
+                    ap_score = average_precision_score(y_true, y_scores)
+                    train_metrics["train/roc_auc_score"] = roc_auc
+                    train_metrics["train/ap_score"] = ap_score
+                    pbar.set_description(f"epoch {epoch} loss {loss.item():.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f}")
+
+                # Log loss
+                global_step += 1
+                wandb.log(train_metrics, step=global_step)
+
+                # Evaluate
+                if evaluate_every_steps and global_step % evaluate_every_steps == 0:
+                    logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
+                    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, use_cuda=use_cuda)
+                    for metric, value in eval_metrics.items():
+                        logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
+                        max_eval_metrics[metric] = max(value, max_eval_metrics[metric])
+                    eval_metrics["epoch"] = epoch
+                    wandb.log(eval_metrics, step=global_step)
+                    wandb.log({k + "_max": v for k, v in max_eval_metrics.items()}, step=global_step)
+
+                    # Save checkpoint
+                    if save_every_steps and global_step % save_every_steps == 0 or eval_metric < min_eval_metric:
+                        checkpoint = {
+                            "model_state_dict": model.module.state_dict(),
+                            "optimizer_state_dict": optimizer.state_dict(),
+                            "epoch": epoch,
+                            "global_step": global_step,
+                            "config": config,
+                            "eval_metric": eval_metric,
+                            "min_eval_metric": min_eval_metric,
+                        }
+                        if eval_metric < min_eval_metric:
+                            logger.info(f"New best evaluation metric: prev {min_eval_metric:.4f} > new {eval_metric:.4f}")
+                            min_eval_metric = eval_metric
+                            model_file = run_dir / "ckpt_best.pth"
+                        else:
+                            model_file = run_dir / f"ckpt_ep{epoch:04d}_step{global_step}.pth"
+                        logger.info(f"Saving checkpoint to {model_file}...")
+                        torch.save(checkpoint, str(model_file.resolve()))
+                        logger.info("Done.")
+
+
+def eval(
+    # Data
+    eval_filepath: str="data/codeclone/test_data.json",
+    spm_filepath: str="data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
+    num_workers=1,
+    max_seq_len=-1,
+    subsample_negatives=False,
+    # Model
+    resume_path: str = "",
+    pretrain_resume_path: str = "",
+    pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
+    encoder_type: str = "transformer",
+    n_encoder_layers: int = 6,
+    d_model: int = 512,
+    critic_type: str = "bilinear_identity",
+    critic_bilinear_rank: int = None,
+    edit_distance_mode=None,  # None, "strings", "tokens"
+    # Optimization
+    batch_size=16,
+    # Loss
+    subword_regularization_alpha: float = 0,
+    # Computational
+    use_cuda: bool = True,
+    seed: int = 0,
+):
+    """Evaluate model"""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+    config = locals()
+    logger.info(f"Config: {config}")
+
+    if use_cuda:
+        assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
+
+    sp = spm.SentencePieceProcessor()
+    sp.Load(spm_filepath)
+    pad_id = sp.PieceToId("[PAD]")
+    pad_collate = get_pad_collate(pad_id)
+
+    # Create eval dataset and dataloader
+    logger.info(f"Eval data path {eval_filepath}")
+    eval_programs = CloneProgramsDataset(eval_filepath, sp, subword_regularization_alpha)
+    eval_positives = ClonePositivesDataset(eval_programs)
+    if subsample_negatives:
+        eval_negatives = CloneNegativesDataset(eval_programs, max_pairs=len(eval_positives), seed=seed)
+    else:
+        eval_negatives = CloneNegativesDataset(eval_programs)
+    eval_dataset = torch.utils.data.ConcatDataset([eval_positives, eval_negatives])
+    logger.info(f"Eval dataset size: {len(eval_dataset)}")
+    eval_loader = torch.utils.data.DataLoader(
+        eval_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=pad_collate
+    )
+
+    epoch = 0
+    global_step = 0
+
+    if edit_distance_mode:
+        model = None
+    else:
+        # Create model
+        model = CloneModel(
+            n_tokens=sp.GetPieceSize(),
+            pad_id=pad_id,
+            encoder_type=encoder_type,
+            n_encoder_layers=n_encoder_layers,
+            d_model=d_model,
+            critic_type=critic_type,
+            bilinear_rank=critic_bilinear_rank
         )
-        for metric, value in eval_metrics.items():
-            logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
-            max_eval_metrics[metric] = max(value, max_eval_metrics[metric])
-        eval_metrics["epoch"] = epoch
-        wandb.log(eval_metrics, step=global_step)
-        wandb.log({k + "_max": v for k, v in max_eval_metrics.items()}, step=global_step)
+        logger.info(f"Created CloneModel {encoder_type}, {critic_type}")
 
-        # Save checkpoint
-        if save_every and epoch % save_every == 0 or eval_metric < min_eval_metric:
-            checkpoint = {
-                "model_state_dict": model.module.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "epoch": epoch,
-                "global_step": global_step,
-                "config": config,
-                "eval_metric": eval_metric,
-                "min_eval_metric": min_eval_metric,
-            }
-            if eval_metric < min_eval_metric:
-                logger.info(f"New best evaluation metric: prev {min_eval_metric:.4f} > new {eval_metric:.4f}")
-                min_eval_metric = eval_metric
-                model_file = run_dir / "ckpt_best.pth"
-            else:
-                model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
-            logger.info(f"Saving checkpoint to {model_file}...")
-            torch.save(checkpoint, str(model_file.resolve()))
-            logger.info("Done.")
+        # Load pretrained checkpoint
+        if pretrain_resume_path:
+            assert not resume_path
+            logger.info(
+                f"Loading pretraining checkpoint {pretrain_resume_path}, pretrain_resume_encoder_name={pretrain_resume_encoder_name}"
+            )
+            checkpoint = torch.load(pretrain_resume_path)
+            pretrained_state_dict = checkpoint["model_state_dict"]
+            encoder_state_dict = {}
+            assert pretrain_resume_encoder_name in ["encoder_k", "encoder_q", "encoder"]
 
+            for key, value in pretrained_state_dict.items():
+                if key.startswith(pretrain_resume_encoder_name + ".") and "project_layer" not in key:
+                    remapped_key = key[len(pretrain_resume_encoder_name + ".") :]
+                    logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
+                    encoder_state_dict[remapped_key] = value
+            model.encoder.load_state_dict(encoder_state_dict)
+            logger.info(f"Loaded state dict from {pretrain_resume_path}")
 
-# def eval(
-#     # Data
-#     eval_filepath: str,
-#     type_vocab_filepath: str,
-#     spm_filepath: str,
-#     num_workers=1,
-#     max_seq_len=-1,
-#     # Model
-#     resume_path: str = "",
-#     no_output_attention: bool = False,
-#     encoder_type: str = "transformer",
-#     n_encoder_layers: int = 6,
-#     d_model: int = 512,
-#     # Output layer hparams
-#     d_out_projection: int = 512,
-#     n_hidden_output: int = 1,
-#     # Optimization
-#     batch_size=16,
-#     # Loss
-#     subword_regularization_alpha: float = 0,
-#     # Computational
-#     use_cuda: bool = True,
-#     seed: int = 0,
-# ):
-#     """Evaluate model"""
-#     torch.manual_seed(seed)
-#     np.random.seed(seed)
-#     random.seed(seed)
+        # model = nn.DataParallel(model)
+        model = model.cuda() if use_cuda else model
 
-#     config = locals()
-#     logger.info(f"Config: {config}")
+        if resume_path:
+            assert not pretrain_resume_path
+            logger.info(f"Resuming training from checkpoint {resume_path}")
+            checkpoint = torch.load(resume_path)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            epoch = checkpoint["epoch"]
+            global_step = checkpoint["global_step"]
 
-#     if use_cuda:
-#         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
+    # Evaluation
+    logger.info(f"Evaluating model ({global_step} steps)...")
+    if edit_distance_mode:
+        _, eval_metrics = _evaluate_edit_distance(eval_loader, sp, edit_distance_mode=edit_distance_mode)
+    else:
+        model.eval()
+        _, eval_metrics = _evaluate(model, eval_loader, sp, use_cuda=use_cuda)
 
-#     sp = spm.SentencePieceProcessor()
-#     sp.Load(spm_filepath)
-#     pad_id = sp.PieceToId("[PAD]")
-
-#     # Create eval dataset and dataloader
-#     logger.info(f"Eval data path {eval_filepath}")
-#     eval_dataset = # TODO
-#     logger.info(f"Eval dataset size: {len(eval_dataset)}")
-#     eval_loader = torch.utils.data.DataLoader(
-#         eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
-#     )
-
-#     # Create model
-#     model = TypeTransformer(
-#         n_tokens=sp.GetPieceSize(),
-#         n_output_tokens=len(id_to_target),
-#         pad_id=pad_id,
-#         encoder_type=encoder_type,
-#         n_encoder_layers=n_encoder_layers,
-#         d_model=d_model,
-#         d_out_projection=d_out_projection,
-#         n_hidden_output=n_hidden_output,
-#     )
-#     logger.info(f"Created TypeTransformer {encoder_type} with {count_parameters(model)} params")
-#     model = nn.DataParallel(model)
-#     model = model.cuda() if use_cuda else model
-
-#     model.eval()
-#     with torch.no_grad():
-#         # Load checkpoint
-#         logger.info(f"Loading parameters from {resume_path}")
-#         checkpoint = torch.load(resume_path)
-#         model.module.load_state_dict(checkpoint["model_state_dict"])
-#         epoch = checkpoint["epoch"]
-#         global_step = checkpoint["global_step"]
-
-#         # Evaluate metrics
-#         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-#         _, eval_metrics = _evaluate(
-#             model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
-#         )
-#         for metric, value in eval_metrics.items():
-#             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
+    for metric, value in eval_metrics.items():
+        logger.info(f"Evaluation {metric} initial ({epoch} epochs, {global_step} steps): {value:.4f}")
 
 
 def split(data_path="data/codeclone/full_data.json", output_dir="data/codeclone/", valid_fraction=0.05, test_fraction=0.1, seed=1):
+    """Split code clone data into train, validation and test sets by problem"""
     # Read problems and solutions, creating a list of lists
     all_problems = []
     with open(data_path, "r") as f:
@@ -556,7 +657,9 @@ def split(data_path="data/codeclone/full_data.json", output_dir="data/codeclone/
         for _difficulty, problems in tqdm.tqdm(data.items(), desc="Reading problems and solutions"):
             for _problem_name, meta in problems.items():
                 # Filter out None programs
-                solutions = list(filter(lambda p: p, meta["srcs"]))
+                solutions = filter(lambda p: p, meta["srcs"])
+                # Remove any exact duplicates
+                solutions = list(set(solutions))
                 if solutions:
                     all_problems.append(solutions)
     num_problems = len(all_problems)
