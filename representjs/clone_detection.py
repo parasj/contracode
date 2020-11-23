@@ -7,6 +7,7 @@ import time
 
 import fire
 import numpy as np
+import ray
 import sentencepiece as spm
 import textdistance
 import torch
@@ -118,21 +119,6 @@ class CloneNegativesDataset(ClonePairDataset):
 
 
 def get_pad_collate(pad_id):
-    # def pad_collate(batch):
-    #     X1, X2, labels = zip(*batch)
-
-    #     # Create tensor of sequence lengths, [B]
-    #     lengths1 = torch.tensor([len(x) for x in X1], dtype=torch.long)
-    #     lengths2 = torch.tensor([len(x) for x in X1], dtype=torch.long)
-
-    #     # Pad sequences
-    #     X1 = pad_sequence(X1, batch_first=True, padding_value=pad_id)  # [B, T]
-    #     X2 = pad_sequence(X2, batch_first=True, padding_value=pad_id)  # [B, T]
-
-    #     # Create tensor of labels
-    #     labels = torch.tensor(labels, dtype=torch.long)
-    #     return X1, X2, lengths1, lengths2, labels
-
     def pad_collate(batch):
         X1, X2, labels = zip(*batch)
         X = X1 + X2
@@ -177,7 +163,7 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
 
 
 @torch.no_grad()
-def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True):
+def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, save_path=None):
     model.eval()
 
     with Timer() as t:
@@ -220,16 +206,23 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True):
         ap_score = average_precision_score(y_true, y_scores)
 
     logger.debug(f"Loss calculation took {t.interval:.3f}s")
-    return (
-        -roc_auc,
-        {
-            "eval/loss": avg_loss,
-            "eval/roc_auc_score": roc_auc,
-            "eval/ap_score": ap_score,
-            "eval/num_examples": num_examples,
-            "eval/num_positive": np.sum(y_true)
-        },
-    )
+    metrics = {
+        "eval/loss": avg_loss,
+        "eval/roc_auc_score": roc_auc,
+        "eval/ap_score": ap_score,
+        "eval/num_examples": num_examples,
+        "eval/num_positive": np.sum(y_true)
+    }
+
+    if save_path:
+        logger.info("Saving labels, scores and metrics to {}", save_path)
+        torch.save({
+            "y_true": y_true,
+            "y_scores": y_scores,
+            "metrics": metrics
+        }, save_path)
+
+    return (-roc_auc, metrics)
 
 
 @torch.no_grad()
@@ -241,45 +234,65 @@ def _levenshtein_similarity(a, b):
 
 
 @torch.no_grad()
-def _evaluate_edit_distance(loader, sp, edit_distance_mode="tokens"):
+def _evaluate_edit_distance(loader, sp, edit_distance_mode="tokens", save_path=None):
     assert edit_distance_mode == "tokens"
+    ray.init()
+
+    @ray.remote
+    def _compute_similarity(X, lengths):
+        assert X.ndim == 2
+        assert lengths.ndim == 1
+
+        # Compute similarity
+        X = X.view(2, X.size(0) // 2, X.size(1))
+        lengths = lengths.view(2, lengths.size(0) // 2)
+        similarity = np.zeros(X.size(1), dtype=np.float32)
+
+        for i in range(X.size(1)):
+            a_len = lengths[0, i]
+            b_len = lengths[1, i]
+            a = list(X[0, i].numpy())[:a_len]  # remove padding
+            b = list(X[1, i].numpy())[:b_len]  # remove padding
+            # a = list(X[0, i].numpy())[1:a_len-1]  # remove bos_id, eos_id and padding
+            # b = list(X[1, i].numpy())[1:b_len-1]  # remove bos_id, eos_id and padding
+            similarity[i] = _levenshtein_similarity(a, b)  # B
+
+        return similarity
 
     with Timer() as t:
         # Compute average loss
         total_similarity = 0
         num_examples = 0
-        # Compute ROC AUC, AP
+
         y_true = []
         y_scores = []
-        pbar = tqdm.tqdm(loader, desc="evalaute")
+
+        pbar = tqdm.tqdm(loader, desc="queue up evalaute")
+        similarity_futures = []
         for X, lengths, labels in pbar:
-            # Compute loss
-            X = X.view(2, X.size(0) // 2, X.size(1))
-            lengths = lengths.view(2, lengths.size(0) // 2)
-            similarity = np.zeros(X.size(1), dtype=np.float32)
-            for i in range(X.size(1)):
-                a_len = lengths[0, i]
-                b_len = lengths[1, i]
-                a = list(X[0, i].numpy())[1:a_len-1]  # remove bos_id, eos_id and padding
-                b = list(X[1, i].numpy())[1:b_len-1]  # remove bos_id, eos_id and padding
-                similarity[i] = _levenshtein_similarity(a, b)  # B
+            f = _compute_similarity.remote(X, lengths)
+            similarity_futures.append(f)
 
-            total_similarity += np.sum(similarity)
             num_examples += X.size(1)
-            avg_similarity = total_similarity / num_examples
-
             y_true.append(labels.numpy())
+
+        # Aggregate futures, compute ROC AUC, AP
+        pbar = tqdm.tqdm(map(ray.get, similarity_futures), desc="get similarities")
+        for i, similarity in enumerate(pbar):
+            total_similarity += np.sum(similarity)
+            avg_similarity = total_similarity / num_examples
             y_scores.append(similarity)
 
-            ytc = np.concatenate(y_true)
-            if ytc.sum() != 0 and ytc.sum() < len(ytc):
-                ysc = np.concatenate(y_scores)
-                roc_auc = roc_auc_score(ytc, ysc)
-                ap_score = average_precision_score(ytc, ysc)
-            else:
-                roc_auc = 0
-                ap_score = 0
-            pbar.set_description(f"evaluate average similarity {avg_similarity:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f}")
+            if i % 10 == 0:
+                ytc = np.concatenate(y_true[:i+1])
+                if ytc.sum() != 0 and ytc.sum() < len(ytc):
+                    ysc = np.concatenate(y_scores)
+                    roc_auc = roc_auc_score(ytc, ysc)
+                    ap_score = average_precision_score(ytc, ysc)
+                else:
+                    roc_auc = 0
+                    ap_score = 0
+                pbar.set_description(f"evaluate average similarity {avg_similarity:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f}")
         
         # Compute ROC AUC and AP
         y_true = np.concatenate(y_true)
@@ -288,15 +301,22 @@ def _evaluate_edit_distance(loader, sp, edit_distance_mode="tokens"):
         ap_score = average_precision_score(y_true, y_scores)
 
     logger.debug(f"Loss calculation took {t.interval:.3f}s")
-    return (
-        -roc_auc,
-        {
-            "eval/roc_auc_score": roc_auc,
-            "eval/ap_score": ap_score,
-            "eval/num_examples": num_examples,
-            "eval/num_positive": np.sum(y_true)
-        },
-    )
+    metrics = {
+        "eval/roc_auc_score": roc_auc,
+        "eval/ap_score": ap_score,
+        "eval/num_examples": num_examples,
+        "eval/num_positive": np.sum(y_true)
+    }
+
+    if save_path:
+        logger.info("Saving labels, scores and metrics to {}", save_path)
+        torch.save({
+            "y_true": y_true,
+            "y_scores": y_scores,
+            "metrics": metrics
+        }, save_path)
+
+    return (-roc_auc, metrics)
 
 
 def train(
@@ -537,6 +557,7 @@ def eval(
     # Data
     eval_filepath: str="data/codeclone/test_data.json",
     spm_filepath: str="data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
+    save_path: str=None,  # path to save labels, similarity scores and metrics
     num_workers=1,
     max_seq_len=-1,
     subsample_negatives=False,
@@ -639,10 +660,10 @@ def eval(
     # Evaluation
     logger.info(f"Evaluating model ({global_step} steps)...")
     if edit_distance_mode:
-        _, eval_metrics = _evaluate_edit_distance(eval_loader, sp, edit_distance_mode=edit_distance_mode)
+        _, eval_metrics = _evaluate_edit_distance(eval_loader, sp, edit_distance_mode=edit_distance_mode, save_path=save_path)
     else:
         model.eval()
-        _, eval_metrics = _evaluate(model, eval_loader, sp, use_cuda=use_cuda)
+        _, eval_metrics = _evaluate(model, eval_loader, sp, use_cuda=use_cuda, save_path=save_path)
 
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} initial ({epoch} epochs, {global_step} steps): {value:.4f}")
@@ -673,10 +694,10 @@ def split(data_path="data/codeclone/full_data.json", output_dir="data/codeclone/
     num_train = num_problems - num_test - num_valid
     logger.info("Split: {} ({}%) train problems", num_train, num_train / num_problems)
     logger.info("Split: {} ({}%) valid problems", num_valid, num_valid / num_problems)
-    logger.info("Split: {} ({}%) test problems", num_test, num_test / num_problems)
     test = [all_problems[i] for i in indices[:num_test]]
     valid = [all_problems[i] for i in indices[num_test:num_test+num_valid]]
     train = [all_problems[i] for i in indices[num_test+num_valid:]]
+    logger.info("Split: {} ({}%) test problems, {} solutions", num_test, num_test / num_problems, sum(map(len, test)))
     assert len(test) == num_test
     assert len(valid) == num_valid
     assert len(train) == num_train
