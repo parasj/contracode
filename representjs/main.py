@@ -20,7 +20,7 @@ from metrics.f1 import F1MetricMethodName
 from models.transformer import TransformerModel, Seq2SeqLSTM
 from representjs import RUN_DIR
 from utils import count_parameters, get_linear_schedule_with_warmup
-from decode import ids_to_strs, beam_search_decode
+from decode import ids_to_strs, beam_search_decode, greedy_decode
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
@@ -87,60 +87,84 @@ def calculate_f1_metric(
     test_loader,
     sp: spm.SentencePieceProcessor,
     use_cuda=True,
-    beam_search_k=8,
-    max_decode_len=10,  # see empirical evaluation of CDF of subwork token lengths
+    use_beam_search=True,
+    beam_search_k=10,
+    max_decode_len=20,  # see empirical evaluation of CDF of subwork token lengths
     logger_fn=None,
 ):
     with Timer() as t:
         sample_generations = []
         n_examples = 0
         precision, recall, f1 = 0.0, 0.0, 0.0
-        pbar = tqdm.tqdm(test_loader, desc="test")
-        for X, Y, X_lengths, Y_lengths in pbar:
-            if use_cuda:
-                X, Y = X.cuda(), Y.cuda()  # B, L
-                X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
-            with Timer() as t:
-                # pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
-                pred, scores = beam_search_decode(model, X, X_lengths, sp, k=beam_search_k, max_decode_len=max_decode_len)
-            logger.info(f"Took {t.interval:.2f}s to decode {X.size(0)} identifiers")
-            for i in range(X.size(0)):
-                gt_identifier = ids_to_strs(Y[i], sp)
-                top_beam = pred[i][0]
-                pred_dict = {"gt": gt_identifier}
-                for i, beam_result in enumerate(pred[i]):
-                    pred_dict[f"pred_{i}"] = beam_result
-                sample_generations.append(pred_dict)
-                precision_item, score_item, f1_item = metric(top_beam, gt_identifier)
-                precision += precision_item
-                recall += score_item
-                f1 += f1_item
-                n_examples += 1
-                if logger_fn is not None:
-                    logger_fn({"precision_item": precision_item, "recall_item": score_item, "f1_item": f1_item})
-                    logger_fn({"precision_avg": precision / n_examples, "recall_avg": recall / n_examples, "f1_avg": f1 / n_examples})
+        with tqdm.tqdm(test_loader, desc="test") as pbar:
+            for X, Y, X_lengths, Y_lengths in pbar:
+                if use_cuda:
+                    X, Y = X.cuda(), Y.cuda()  # B, L
+                    X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
+                with Timer() as t:
+                    # pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
+                    if use_beam_search:
+                        pred, scores = beam_search_decode(model, X, X_lengths, sp, k=beam_search_k, max_decode_len=max_decode_len)
+                    else:
+                        pred = greedy_decode(model, X, sp, max_decode_len=max_decode_len)
+                for i in range(X.size(0)):
+                    gt_identifier = ids_to_strs(Y[i], sp)
+                    pred_dict = {"gt": gt_identifier}
+                    if use_beam_search:
+                        top_beam = pred[i][0]
+                        tqdm.tqdm.write("{:>20} vs. gt {:<20}".format(pred[i][0], gt_identifier))
+                        for i, beam_result in enumerate(pred[i]):
+                            pred_dict[f"pred_{i}"] = beam_result
+                    else:
+                        top_beam = pred[i]
+                        pred_dict[f"pred_{i}"] = top_beam
+                    sample_generations.append(pred_dict)
+                    precision_item, score_item, f1_item = metric(top_beam, gt_identifier)
+
+                    B = X.size(0)
+                    n_examples += B
+                    precision += precision_item * B
+                    precision_avg = precision / n_examples
+                    recall += score_item * B
+                    recall_avg = recall / n_examples
+                    f1 += f1_item * B
+                    if precision_avg or recall_avg:
+                        f1_overall = 2 * (precision_avg * recall_avg) / (precision_avg + recall_avg)
+                    else:
+                        f1_overall = 0.
+                    item_metrics = {"precision_item": precision_item, "recall_item": score_item, "f1_item": f1_item}
+                    avg_metrics = {"precision_avg": precision_avg, "recall_avg": recall_avg, "f1_avg": f1 / n_examples, "f1_overall": f1_overall}
+                    pbar.set_postfix(avg_metrics)
+                    if logger_fn is not None:
+                        logger_fn(item_metrics)
+                        logger_fn(avg_metrics)
     logger.debug(f"Test set evaluation (F1) took {t.interval:.3}s over {n_examples} samples")
-    return precision / n_examples, recall / n_examples, f1 / n_examples, sample_generations
+    precision_avg = precision / n_examples
+    recall_avg = recall / n_examples
+    f1_overall = 2 * (precision_avg * recall_avg) / (precision_avg + recall_avg)
+    return precision_avg, recall_avg, f1_overall, sample_generations
 
 
 def calculate_nll(model, test_loader, sp: spm.SentencePieceProcessor, use_cuda=True, logger_fn=None):
     pad_id = sp.PieceToId("[PAD]")
     n_examples = 0
     test_nll = 0.0
-    pbar = tqdm.tqdm(test_loader, desc="test")
-    for X, Y, X_lengths, Y_lengths in pbar:
-        B, L = X.shape
-        if use_cuda:
-            X, Y = X.cuda(), Y.cuda()  # B, L
-            X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
-        pred_y = model(X, Y[:, :-1].to(X.device), X_lengths, Y_lengths)
-        B, X, D = pred_y.shape
-        loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction="sum")
+    with tqdm.tqdm(test_loader, desc="Test (NLL)") as pbar:
+        for X, Y, X_lengths, Y_lengths in pbar:
+            B, L = X.shape
+            if use_cuda:
+                X, Y = X.cuda(), Y.cuda()  # B, L
+                X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
+            pred_y = model(X, Y[:, :-1].to(X.device), X_lengths, Y_lengths)
+            B, X, D = pred_y.shape
+            loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction="sum")
 
-        n_examples += B
-        test_nll += loss.item()
-        if logger_fn is not None:
-            logger_fn({"test_nll": loss.item() / B, "test_nll_avg": test_nll / n_examples})
+            n_examples += B
+            test_nll += loss.item()
+            metric_dict = {"test_nll": loss.item() / B, "test_nll_avg": test_nll / n_examples}
+            if logger_fn is not None:
+                logger_fn(metric_dict)
+            pbar.set_postfix(metric_dict)
     return test_nll / n_examples
 
 
@@ -171,7 +195,7 @@ def test(
     test_loader = javascript_dataloader(
         test_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         num_workers=num_workers,
         sp=sp,
         program_mode=program_mode,
@@ -187,7 +211,10 @@ def test(
         model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
         logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
     if use_cuda:
+        logger.info("Using cuda")
         model = model.cuda()
+    else:
+        logger.info("Using CPU")
 
     # Load checkpoint
     checkpoint = torch.load(checkpoint_file)
@@ -202,11 +229,6 @@ def test(
         raise e
     logger.info(f"Loaded state dict from {checkpoint_file}")
 
-    # Evaluate NLL
-    model.eval()
-    with torch.no_grad():
-        test_nll = calculate_nll(model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
-    logger.info(f"NLL: {test_nll:.5f}")
 
     # Make metric
     metric = F1MetricMethodName()
@@ -215,6 +237,15 @@ def test(
         precision, recall, f1, sample_generations = calculate_f1_metric(
             metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log
         )
+    logger.info(f"Precision: {precision:.5f}%")
+    logger.info(f"Recall: {recall:.5f}%")
+    logger.info(f"F1: {f1:.5f}%")
+    
+    # Evaluate NLL
+    model.eval()
+    with torch.no_grad():
+        test_nll = calculate_nll(model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
+
     logger.info(f"NLL: {test_nll:.5f}")
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
