@@ -35,6 +35,7 @@ export DATASET_LIMIT=${DATASET_LIMIT:-"-1"}
 # set default arugments
 [ -z "$RUNNAME" ] && { echo "Need to set RUNNAME"; exit 1; }
 [ -z "$CKPT" ] && { echo "Need to set CKPT"; exit 1; }
+[ -z "$RESUME_ENCODER_NAME" ] && { echo "Need to set RESUME_ENCODER_NAME"; exit 1; }
 [ -z "$PROGRAM_MODE" ] && { echo "Need to set PROGRAM_MODE"; exit 1; }
 [ -z "$LABEL_MODE" ] && { echo "Need to set LABEL_MODE"; exit 1; }
 [ -z "$N_DECODER_LAYERS" ] && { echo "Need to set N_DECODER_LAYERS"; exit 1; }
@@ -47,6 +48,7 @@ export DATASET_LIMIT=${DATASET_LIMIT:-"-1"}
 # print argument names
 echo "RUNNAME = $RUNNAME"
 echo "CKPT = $CKPT"
+echo "RESUME_ENCODER_NAME = $RESUME_ENCODER_NAME"
 echo "PROGRAM_MODE = $PROGRAM_MODE"
 echo "LABELMODE = $LABELMODE"
 echo "LR = $LR"
@@ -76,5 +78,5 @@ python representjs/main.py train --run_name "$RUNNAME-$SLURM_JOB_ID" \
   --train_filepath $DATA_CACHE/codesearchnet_javascript/javascript_train_supervised.jsonl.gz \
   --eval_filepath $DATA_CACHE/codesearchnet_javascript/javascript_valid_0.jsonl.gz \
   --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
-  --resume_path "$CKPT" --resume_encoder_name encoder --limit_dataset_size $DATASET_LIMIT
+  --resume_path "$CKPT" --resume_encoder_name "$RESUME_ENCODER_NAME" --limit_dataset_size $DATASET_LIMIT
 

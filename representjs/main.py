@@ -89,11 +89,11 @@ def calculate_f1_metric(
     use_cuda=True,
     use_beam_search=True,
     beam_search_k=10,
+    per_node_k=None,
     max_decode_len=20,  # see empirical evaluation of CDF of subwork token lengths
     beam_search_sampler="deterministic",
     top_p_threshold=0.9,
     top_p_temperature=1.0,
-    per_node_k=None,
     logger_fn=None,
     constrain_decoding=False,
 ):
@@ -115,10 +115,10 @@ def calculate_f1_metric(
                             max_decode_len=max_decode_len,
                             constrain_decoding=constrain_decoding,
                             k=beam_search_k,
-                            per_node_k=None,
-                            sampler="deterministic",
-                            top_p_threshold=0.9,
-                            top_p_temperature=1.0,
+                            per_node_k=per_node_k,
+                            sampler=beam_search_sampler,
+                            top_p_threshold=top_p_threshold,
+                            top_p_temperature=top_p_temperature,
                         )
                     else:
                         pred = greedy_decode(model, X, sp, max_decode_len=max_decode_len)
@@ -201,6 +201,11 @@ def test(
     n_decoder_layers=4,
     d_model=512,
     use_cuda: bool = True,
+    beam_search_k=10,
+    per_node_k=None,
+    beam_search_sampler="deterministic",
+    top_p_threshold=0.9,
+    top_p_temperature=1.0,
 ):
     wandb.init(name=checkpoint_file, config=locals(), project="f1_eval", entity="ml4code")
     if use_cuda:
@@ -255,11 +260,22 @@ def test(
     model.eval()
     with torch.no_grad():
         precision, recall, f1, sample_generations = calculate_f1_metric(
-            metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log
+            metric,
+            model,
+            test_loader,
+            sp,
+            use_cuda=use_cuda,
+            logger_fn=wandb.log,
+            beam_search_k=beam_search_k,
+            per_node_k=per_node_k if (per_node_k is not None and per_node_k > 0) else None,
+            beam_search_sampler=beam_search_sampler,
+            top_p_threshold=top_p_threshold,
+            top_p_temperature=top_p_temperature,
         )
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
     logger.info(f"F1: {f1:.5f}%")
+    wandb.log(dict(precision_final=precision, recall_final=recall, f1_final=f1))
 
     # Evaluate NLL
     model.eval()
@@ -379,27 +395,6 @@ def train(
         model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
         logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
 
-    # Load checkpoint
-    if resume_path:
-        logger.info(f"Resuming training from checkpoint {resume_path}, resume_encoder_name={resume_encoder_name}")
-        checkpoint = torch.load(resume_path)
-        pretrained_state_dict = checkpoint["model_state_dict"]
-        encoder_state_dict = {}
-        assert resume_encoder_name in ["encoder_k", "encoder_q", "encoder"]
-
-        for key, value in pretrained_state_dict.items():
-            if key.startswith(resume_encoder_name + ".") and "project_layer" not in key:
-                remapped_key = key[len(resume_encoder_name + ".") :]
-                logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
-                encoder_state_dict[remapped_key] = value
-            if key.startswith(resume_encoder_name + ".") and "project_layer.0." in key and resume_project:
-                remapped_key = key[len(resume_encoder_name + ".") :]
-                logger.debug(f"Remapping checkpoint project key {key} to {remapped_key}. Value mean: {value.mean().item()}")
-                encoder_state_dict[remapped_key] = value
-        model.encoder.load_state_dict(encoder_state_dict, strict=False)
-        logger.info(f"Loaded state dict from {resume_path}")
-        logger.info(f"Loaded keys: {encoder_state_dict.keys()}")
-
     # Set up optimizer
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
@@ -411,9 +406,46 @@ def train(
     else:
         scheduler = LambdaLR(optimizer, lr_lambda=lambda x: 1.0)
 
+    # Load checkpoint
+    start_epoch = 1
     global_step = 0
     min_eval_loss = float("inf")
-    for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
+    if resume_path:
+        logger.info(f"Resuming training from checkpoint {resume_path}, resume_encoder_name={resume_encoder_name}")
+        checkpoint = torch.load(resume_path)
+        assert resume_encoder_name in ["encoder_k", "encoder_q", "encoder", "supervised"]
+
+        if resume_encoder_name == "supervised":
+            # This checkpoint is the result of training with this script, not pretraining
+            model.module.load_state_dict(checkpoint["model_state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+            min_eval_loss = checkpoint.get("min_eval_loss", checkpoint["eval_loss"])
+
+            start_epoch = checkpoint["epoch"] + 1
+            global_step = checkpoint["global_step"]
+
+            for _ in range(global_step):
+                scheduler.step()
+        else:
+            pretrained_state_dict = checkpoint["model_state_dict"]
+            encoder_state_dict = {}
+
+            for key, value in pretrained_state_dict.items():
+                if key.startswith(resume_encoder_name + ".") and "project_layer" not in key:
+                    remapped_key = key[len(resume_encoder_name + ".") :]
+                    logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
+                    encoder_state_dict[remapped_key] = value
+                if key.startswith(resume_encoder_name + ".") and "project_layer.0." in key and resume_project:
+                    remapped_key = key[len(resume_encoder_name + ".") :]
+                    logger.debug(f"Remapping checkpoint project key {key} to {remapped_key}. Value mean: {value.mean().item()}")
+                    encoder_state_dict[remapped_key] = value
+            model.encoder.load_state_dict(encoder_state_dict, strict=False)
+            logger.info(f"Loaded keys: {encoder_state_dict.keys()}")
+        logger.info(f"Loaded state dict from {resume_path}")
+
+
+    for epoch in tqdm.trange(start_epoch, num_epochs + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         if train_decoder_only:
             model.module.encoder.eval()
@@ -455,6 +487,12 @@ def train(
 
         # Save checkpoint
         if save_every and epoch % save_every == 0 or eval_loss < min_eval_loss:
+            if eval_loss < min_eval_loss:
+                logger.info(f"New best evaluation loss: prev {min_eval_loss:.4f} > new {eval_loss:.4f}")
+                min_eval_loss = eval_loss
+                model_file = run_dir / "ckpt_best.pth"
+            else:
+                model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             checkpoint = {
                 "model_state_dict": model.module.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
@@ -462,13 +500,8 @@ def train(
                 "global_step": global_step,
                 "config": config,
                 "eval_loss": eval_loss,
+                "min_eval_loss": min_eval_loss
             }
-            if eval_loss < min_eval_loss:
-                logger.info(f"New best evaluation loss: prev {min_eval_loss:.4f} > new {eval_loss:.4f}")
-                min_eval_loss = eval_loss
-                model_file = run_dir / "ckpt_best.pth"
-            else:
-                model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             logger.info(f"Saving checkpoint to {model_file}...")
             torch.save(checkpoint, str(model_file.resolve()))
             wandb.save(str(model_file.resolve()))

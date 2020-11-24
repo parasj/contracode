@@ -1,0 +1,48 @@
+program: representjs/main.py
+command:
+  - ${env}
+  - python3
+  - ${program}
+  - test
+  - ${args}
+method: random
+metric:
+  name: f1_overall
+  goal: maximize
+parameters:
+  batch_size:
+    value: 64
+  num_workers:
+    value: 8
+
+  # checkpoint
+  n_decoder_layers:
+    value: 4
+  checkpoint_file:
+    value: data/runs/10082_augmentation_identifier_codeenc_noreset_finetune/ckpt_best.pth
+  
+  # data location
+  test_filepath:
+    value: /data/paras/representjs_data/codesearchnet_javascript/javascript_test_0.jsonl.gz
+  spm_filepath:
+    value: /data/paras/representjs_data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model
+  
+  # beam search configuration
+  beam_search_sampler:
+    value: top_p
+  beam_search_k:
+    distribution: int_uniform
+    min: 1
+    max: 24
+  per_node_k:
+    distribution: int_uniform
+    min: 0
+    max: 16
+  top_p_threshold:
+    distribution: uniform
+    min: 0.0
+    max: 1.0
+  top_p_temperature:
+    distribution: uniform
+    min: 0.0
+    max: 2.0
