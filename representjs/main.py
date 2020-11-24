@@ -444,7 +444,6 @@ def train(
             logger.info(f"Loaded keys: {encoder_state_dict.keys()}")
         logger.info(f"Loaded state dict from {resume_path}")
 
-
     for epoch in tqdm.trange(start_epoch, num_epochs + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         if train_decoder_only:
@@ -500,7 +499,7 @@ def train(
                 "global_step": global_step,
                 "config": config,
                 "eval_loss": eval_loss,
-                "min_eval_loss": min_eval_loss
+                "min_eval_loss": min_eval_loss,
             }
             logger.info(f"Saving checkpoint to {model_file}...")
             torch.save(checkpoint, str(model_file.resolve()))
