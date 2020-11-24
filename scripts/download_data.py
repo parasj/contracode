@@ -32,7 +32,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download ContraCode data")
     parser.add_argument("--path", type=str, default=DEFAULT_LOCAL_BASE, help="Path to save output to")
     parser.add_argument("--skip-csn", action="store_true")
-    parser.add_argument("--skip-hf", action="store_true")
+    parser.add_argument("--download-hf", action="store_true")  # skipped by default as it is large
     parser.add_argument("--skip-type-prediction", action="store_true")
     parser.add_argument("--skip-code-clone", action="store_true")
     args = parser.parse_args()
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     LOCAL_PATH = Path(args.path)
 
     cmds = []
-    if not args.skip_hf:
+    if args.download_hf:
         cmds.extend(dl_cmds("hf_data/feather_tok/feather_tok.tar.gz", True, LOCAL_PATH))
 
     if not args.skip_csn:

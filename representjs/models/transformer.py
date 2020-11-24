@@ -7,6 +7,7 @@ from models.encoder import CodeEncoder, CodeEncoderLSTM
 
 from loguru import logger
 
+
 class TransformerModel(nn.Module):
     def __init__(
         self,

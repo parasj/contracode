@@ -32,7 +32,7 @@ SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model"
 
 
 def _evaluate(
-    model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20, loss_type="nll_token"
+    model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20, loss_type="nll_token",
 ):
     model.eval()
     pad_id = sp.PieceToId("[PAD]")
@@ -90,21 +90,36 @@ def calculate_f1_metric(
     use_beam_search=True,
     beam_search_k=10,
     max_decode_len=20,  # see empirical evaluation of CDF of subwork token lengths
+    beam_search_sampler="deterministic",
+    top_p_threshold=0.9,
+    top_p_temperature=1.0,
+    per_node_k=None,
     logger_fn=None,
+    constrain_decoding=False,
 ):
     with Timer() as t:
         sample_generations = []
         n_examples = 0
         precision, recall, f1 = 0.0, 0.0, 0.0
         with tqdm.tqdm(test_loader, desc="test") as pbar:
-            for X, Y, X_lengths, Y_lengths in pbar:
+            for X, Y, _, _ in pbar:
                 if use_cuda:
                     X, Y = X.cuda(), Y.cuda()  # B, L
-                    X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
                 with Timer() as t:
                     # pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
                     if use_beam_search:
-                        pred, scores = beam_search_decode(model, X, X_lengths, sp, k=beam_search_k, max_decode_len=max_decode_len)
+                        pred, _ = beam_search_decode(
+                            model,
+                            X,
+                            sp,
+                            max_decode_len=max_decode_len,
+                            constrain_decoding=constrain_decoding,
+                            k=beam_search_k,
+                            per_node_k=None,
+                            sampler="deterministic",
+                            top_p_threshold=0.9,
+                            top_p_temperature=1.0,
+                        )
                     else:
                         pred = greedy_decode(model, X, sp, max_decode_len=max_decode_len)
                 for i in range(X.size(0)):
@@ -131,9 +146,14 @@ def calculate_f1_metric(
                     if precision_avg or recall_avg:
                         f1_overall = 2 * (precision_avg * recall_avg) / (precision_avg + recall_avg)
                     else:
-                        f1_overall = 0.
+                        f1_overall = 0.0
                     item_metrics = {"precision_item": precision_item, "recall_item": score_item, "f1_item": f1_item}
-                    avg_metrics = {"precision_avg": precision_avg, "recall_avg": recall_avg, "f1_avg": f1 / n_examples, "f1_overall": f1_overall}
+                    avg_metrics = {
+                        "precision_avg": precision_avg,
+                        "recall_avg": recall_avg,
+                        "f1_avg": f1 / n_examples,
+                        "f1_overall": f1_overall,
+                    }
                     pbar.set_postfix(avg_metrics)
                     if logger_fn is not None:
                         logger_fn(item_metrics)
@@ -210,6 +230,7 @@ def test(
     elif model_type == "lstm":
         model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
         logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
+
     if use_cuda:
         logger.info("Using cuda")
         model = model.cuda()
@@ -229,7 +250,6 @@ def test(
         raise e
     logger.info(f"Loaded state dict from {checkpoint_file}")
 
-
     # Make metric
     metric = F1MetricMethodName()
     model.eval()
@@ -240,7 +260,7 @@ def test(
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
     logger.info(f"F1: {f1:.5f}%")
-    
+
     # Evaluate NLL
     model.eval()
     with torch.no_grad():
@@ -421,7 +441,9 @@ def train(
 
             # Log loss
             global_step += 1
-            wandb.log({"epoch": epoch, f"label-{label_mode}/train_loss": loss.item(), "lr": scheduler.get_last_lr()[0]}, step=global_step)
+            wandb.log(
+                {"epoch": epoch, f"label-{label_mode}/train_loss": loss.item(), "lr": scheduler.get_last_lr()[0]}, step=global_step,
+            )
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
         # Evaluate

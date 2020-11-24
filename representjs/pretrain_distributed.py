@@ -331,7 +331,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=config["batch_size"],
-        shuffle=False,
+        shuffle=True,
         collate_fn=pad_collate,
         # num_workers=config["num_workers"],
         num_workers=0,
