@@ -34,15 +34,16 @@ chmod 755 -R ~/slurm
 
 mkdir -p $DATA_CACHE
 chmod 755 $DATA_CACHE
-rsync -avhW --no-compress --progress /work/paras/representjs/data/codesearchnet_javascript "$DATA_CACHE"
+rsync -avhW --no-compress --progress /work/paras/code/contracode/data/codesearchnet_javascript "$DATA_CACHE"
 
 cd /work/paras/representjs
-pip install torch
-pip install -e .
-npm install
+# pip install torch
+# pip install -e .
+# npm install
 
 python representjs/main.py test -batch_size $BATCHSIZE --num_workers 8 \
   --n_decoder_layers $NUMDECODERLAYERS \
   --checkpoint_file $CHECKPOINT \
   --test_filepath $DATA_CACHE/codesearchnet_javascript/javascript_test_0.jsonl.gz \
-  --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model
+  --spm_filepath $DATA_CACHE/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model \
+  --beam_search_k 10 --per_node_k 4

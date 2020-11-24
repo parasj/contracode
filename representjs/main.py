@@ -20,7 +20,7 @@ from metrics.f1 import F1MetricMethodName
 from models.transformer import TransformerModel, Seq2SeqLSTM
 from representjs import RUN_DIR
 from utils import count_parameters, get_linear_schedule_with_warmup
-from decode import ids_to_strs, beam_search_decode
+from decode import ids_to_strs, beam_search_decode, greedy_decode
 
 # Default argument values
 DATA_DIR = "data/codesearchnet_javascript"
@@ -32,7 +32,7 @@ SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model"
 
 
 def _evaluate(
-    model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20, loss_type="nll_token"
+    model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, num_to_print=8, beam_search_k=5, max_decode_len=20, loss_type="nll_token",
 ):
     model.eval()
     pad_id = sp.PieceToId("[PAD]")
@@ -87,60 +87,104 @@ def calculate_f1_metric(
     test_loader,
     sp: spm.SentencePieceProcessor,
     use_cuda=True,
-    beam_search_k=8,
-    max_decode_len=10,  # see empirical evaluation of CDF of subwork token lengths
+    use_beam_search=True,
+    beam_search_k=10,
+    per_node_k=None,
+    max_decode_len=20,  # see empirical evaluation of CDF of subwork token lengths
+    beam_search_sampler="deterministic",
+    top_p_threshold=0.9,
+    top_p_temperature=1.0,
     logger_fn=None,
+    constrain_decoding=False,
 ):
     with Timer() as t:
         sample_generations = []
         n_examples = 0
         precision, recall, f1 = 0.0, 0.0, 0.0
-        pbar = tqdm.tqdm(test_loader, desc="test")
-        for X, Y, X_lengths, Y_lengths in pbar:
-            if use_cuda:
-                X, Y = X.cuda(), Y.cuda()  # B, L
-                X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
-            with Timer() as t:
-                # pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
-                pred, scores = beam_search_decode(model, X, X_lengths, sp, k=beam_search_k, max_decode_len=max_decode_len)
-            logger.info(f"Took {t.interval:.2f}s to decode {X.size(0)} identifiers")
-            for i in range(X.size(0)):
-                gt_identifier = ids_to_strs(Y[i], sp)
-                top_beam = pred[i][0]
-                pred_dict = {"gt": gt_identifier}
-                for i, beam_result in enumerate(pred[i]):
-                    pred_dict[f"pred_{i}"] = beam_result
-                sample_generations.append(pred_dict)
-                precision_item, score_item, f1_item = metric(top_beam, gt_identifier)
-                precision += precision_item
-                recall += score_item
-                f1 += f1_item
-                n_examples += 1
-                if logger_fn is not None:
-                    logger_fn({"precision_item": precision_item, "recall_item": score_item, "f1_item": f1_item})
-                    logger_fn({"precision_avg": precision / n_examples, "recall_avg": recall / n_examples, "f1_avg": f1 / n_examples})
+        with tqdm.tqdm(test_loader, desc="test") as pbar:
+            for X, Y, _, _ in pbar:
+                if use_cuda:
+                    X, Y = X.cuda(), Y.cuda()  # B, L
+                with Timer() as t:
+                    # pred, scores = beam_search_decode(model, X, sp, k=beam_search_k, max_decode_len=max_decode_len)
+                    if use_beam_search:
+                        pred, _ = beam_search_decode(
+                            model,
+                            X,
+                            sp,
+                            max_decode_len=max_decode_len,
+                            constrain_decoding=constrain_decoding,
+                            k=beam_search_k,
+                            per_node_k=per_node_k,
+                            sampler=beam_search_sampler,
+                            top_p_threshold=top_p_threshold,
+                            top_p_temperature=top_p_temperature,
+                        )
+                    else:
+                        pred = greedy_decode(model, X, sp, max_decode_len=max_decode_len)
+                for i in range(X.size(0)):
+                    gt_identifier = ids_to_strs(Y[i], sp)
+                    pred_dict = {"gt": gt_identifier}
+                    if use_beam_search:
+                        top_beam = pred[i][0]
+                        tqdm.tqdm.write("{:>20} vs. gt {:<20}".format(pred[i][0], gt_identifier))
+                        for i, beam_result in enumerate(pred[i]):
+                            pred_dict[f"pred_{i}"] = beam_result
+                    else:
+                        top_beam = pred[i]
+                        pred_dict[f"pred_{i}"] = top_beam
+                    sample_generations.append(pred_dict)
+                    precision_item, score_item, f1_item = metric(top_beam, gt_identifier)
+
+                    B = X.size(0)
+                    n_examples += B
+                    precision += precision_item * B
+                    precision_avg = precision / n_examples
+                    recall += score_item * B
+                    recall_avg = recall / n_examples
+                    f1 += f1_item * B
+                    if precision_avg or recall_avg:
+                        f1_overall = 2 * (precision_avg * recall_avg) / (precision_avg + recall_avg)
+                    else:
+                        f1_overall = 0.0
+                    item_metrics = {"precision_item": precision_item, "recall_item": score_item, "f1_item": f1_item}
+                    avg_metrics = {
+                        "precision_avg": precision_avg,
+                        "recall_avg": recall_avg,
+                        "f1_avg": f1 / n_examples,
+                        "f1_overall": f1_overall,
+                    }
+                    pbar.set_postfix(avg_metrics)
+                    if logger_fn is not None:
+                        logger_fn(item_metrics)
+                        logger_fn(avg_metrics)
     logger.debug(f"Test set evaluation (F1) took {t.interval:.3}s over {n_examples} samples")
-    return precision / n_examples, recall / n_examples, f1 / n_examples, sample_generations
+    precision_avg = precision / n_examples
+    recall_avg = recall / n_examples
+    f1_overall = 2 * (precision_avg * recall_avg) / (precision_avg + recall_avg)
+    return precision_avg, recall_avg, f1_overall, sample_generations
 
 
 def calculate_nll(model, test_loader, sp: spm.SentencePieceProcessor, use_cuda=True, logger_fn=None):
     pad_id = sp.PieceToId("[PAD]")
     n_examples = 0
     test_nll = 0.0
-    pbar = tqdm.tqdm(test_loader, desc="test")
-    for X, Y, X_lengths, Y_lengths in pbar:
-        B, L = X.shape
-        if use_cuda:
-            X, Y = X.cuda(), Y.cuda()  # B, L
-            X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
-        pred_y = model(X, Y[:, :-1].to(X.device), X_lengths, Y_lengths)
-        B, X, D = pred_y.shape
-        loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction="sum")
+    with tqdm.tqdm(test_loader, desc="Test (NLL)") as pbar:
+        for X, Y, X_lengths, Y_lengths in pbar:
+            B, L = X.shape
+            if use_cuda:
+                X, Y = X.cuda(), Y.cuda()  # B, L
+                X_lengths, Y_lengths = X_lengths.cuda(), Y_lengths.cuda()
+            pred_y = model(X, Y[:, :-1].to(X.device), X_lengths, Y_lengths)
+            B, X, D = pred_y.shape
+            loss = F.cross_entropy(pred_y.reshape(B * X, D), Y[:, 1:].reshape(B * X), ignore_index=pad_id, reduction="sum")
 
-        n_examples += B
-        test_nll += loss.item()
-        if logger_fn is not None:
-            logger_fn({"test_nll": loss.item() / B, "test_nll_avg": test_nll / n_examples})
+            n_examples += B
+            test_nll += loss.item()
+            metric_dict = {"test_nll": loss.item() / B, "test_nll_avg": test_nll / n_examples}
+            if logger_fn is not None:
+                logger_fn(metric_dict)
+            pbar.set_postfix(metric_dict)
     return test_nll / n_examples
 
 
@@ -157,6 +201,11 @@ def test(
     n_decoder_layers=4,
     d_model=512,
     use_cuda: bool = True,
+    beam_search_k=10,
+    per_node_k=None,
+    beam_search_sampler="deterministic",
+    top_p_threshold=0.9,
+    top_p_temperature=1.0,
 ):
     wandb.init(name=checkpoint_file, config=locals(), project="f1_eval", entity="ml4code")
     if use_cuda:
@@ -171,7 +220,7 @@ def test(
     test_loader = javascript_dataloader(
         test_dataset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         num_workers=num_workers,
         sp=sp,
         program_mode=program_mode,
@@ -186,8 +235,12 @@ def test(
     elif model_type == "lstm":
         model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
         logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
+
     if use_cuda:
+        logger.info("Using cuda")
         model = model.cuda()
+    else:
+        logger.info("Using CPU")
 
     # Load checkpoint
     checkpoint = torch.load(checkpoint_file)
@@ -202,19 +255,33 @@ def test(
         raise e
     logger.info(f"Loaded state dict from {checkpoint_file}")
 
-    # Evaluate NLL
-    model.eval()
-    with torch.no_grad():
-        test_nll = calculate_nll(model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
-    logger.info(f"NLL: {test_nll:.5f}")
-
     # Make metric
     metric = F1MetricMethodName()
     model.eval()
     with torch.no_grad():
         precision, recall, f1, sample_generations = calculate_f1_metric(
-            metric, model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log
+            metric,
+            model,
+            test_loader,
+            sp,
+            use_cuda=use_cuda,
+            logger_fn=wandb.log,
+            beam_search_k=beam_search_k,
+            per_node_k=per_node_k if (per_node_k is not None and per_node_k > 0) else None,
+            beam_search_sampler=beam_search_sampler,
+            top_p_threshold=top_p_threshold,
+            top_p_temperature=top_p_temperature,
         )
+    logger.info(f"Precision: {precision:.5f}%")
+    logger.info(f"Recall: {recall:.5f}%")
+    logger.info(f"F1: {f1:.5f}%")
+    wandb.log(dict(precision_final=precision, recall_final=recall, f1_final=f1))
+
+    # Evaluate NLL
+    model.eval()
+    with torch.no_grad():
+        test_nll = calculate_nll(model, test_loader, sp, use_cuda=use_cuda, logger_fn=wandb.log)
+
     logger.info(f"NLL: {test_nll:.5f}")
     logger.info(f"Precision: {precision:.5f}%")
     logger.info(f"Recall: {recall:.5f}%")
@@ -328,27 +395,6 @@ def train(
         model = Seq2SeqLSTM(n_tokens=sp.GetPieceSize(), pad_id=pad_id, d_model=d_model)
         logger.info(f"Created Seq2SeqLSTM with {count_parameters(model)} params")
 
-    # Load checkpoint
-    if resume_path:
-        logger.info(f"Resuming training from checkpoint {resume_path}, resume_encoder_name={resume_encoder_name}")
-        checkpoint = torch.load(resume_path)
-        pretrained_state_dict = checkpoint["model_state_dict"]
-        encoder_state_dict = {}
-        assert resume_encoder_name in ["encoder_k", "encoder_q", "encoder"]
-
-        for key, value in pretrained_state_dict.items():
-            if key.startswith(resume_encoder_name + ".") and "project_layer" not in key:
-                remapped_key = key[len(resume_encoder_name + ".") :]
-                logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
-                encoder_state_dict[remapped_key] = value
-            if key.startswith(resume_encoder_name + ".") and "project_layer.0." in key and resume_project:
-                remapped_key = key[len(resume_encoder_name + ".") :]
-                logger.debug(f"Remapping checkpoint project key {key} to {remapped_key}. Value mean: {value.mean().item()}")
-                encoder_state_dict[remapped_key] = value
-        model.encoder.load_state_dict(encoder_state_dict, strict=False)
-        logger.info(f"Loaded state dict from {resume_path}")
-        logger.info(f"Loaded keys: {encoder_state_dict.keys()}")
-
     # Set up optimizer
     model = nn.DataParallel(model)
     model = model.cuda() if use_cuda else model
@@ -360,9 +406,45 @@ def train(
     else:
         scheduler = LambdaLR(optimizer, lr_lambda=lambda x: 1.0)
 
+    # Load checkpoint
+    start_epoch = 1
     global_step = 0
     min_eval_loss = float("inf")
-    for epoch in tqdm.trange(1, num_epochs + 1, desc="training", unit="epoch", leave=False):
+    if resume_path:
+        logger.info(f"Resuming training from checkpoint {resume_path}, resume_encoder_name={resume_encoder_name}")
+        checkpoint = torch.load(resume_path)
+        assert resume_encoder_name in ["encoder_k", "encoder_q", "encoder", "supervised"]
+
+        if resume_encoder_name == "supervised":
+            # This checkpoint is the result of training with this script, not pretraining
+            model.module.load_state_dict(checkpoint["model_state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+            min_eval_loss = checkpoint.get("min_eval_loss", checkpoint["eval_loss"])
+
+            start_epoch = checkpoint["epoch"] + 1
+            global_step = checkpoint["global_step"]
+
+            for _ in range(global_step):
+                scheduler.step()
+        else:
+            pretrained_state_dict = checkpoint["model_state_dict"]
+            encoder_state_dict = {}
+
+            for key, value in pretrained_state_dict.items():
+                if key.startswith(resume_encoder_name + ".") and "project_layer" not in key:
+                    remapped_key = key[len(resume_encoder_name + ".") :]
+                    logger.debug(f"Remapping checkpoint key {key} to {remapped_key}. Value mean: {value.mean().item()}")
+                    encoder_state_dict[remapped_key] = value
+                if key.startswith(resume_encoder_name + ".") and "project_layer.0." in key and resume_project:
+                    remapped_key = key[len(resume_encoder_name + ".") :]
+                    logger.debug(f"Remapping checkpoint project key {key} to {remapped_key}. Value mean: {value.mean().item()}")
+                    encoder_state_dict[remapped_key] = value
+            model.encoder.load_state_dict(encoder_state_dict, strict=False)
+            logger.info(f"Loaded keys: {encoder_state_dict.keys()}")
+        logger.info(f"Loaded state dict from {resume_path}")
+
+    for epoch in tqdm.trange(start_epoch, num_epochs + 1, desc="training", unit="epoch", leave=False):
         logger.info(f"Starting epoch {epoch}\n")
         if train_decoder_only:
             model.module.encoder.eval()
@@ -390,7 +472,9 @@ def train(
 
             # Log loss
             global_step += 1
-            wandb.log({"epoch": epoch, f"label-{label_mode}/train_loss": loss.item(), "lr": scheduler.get_last_lr()[0]}, step=global_step)
+            wandb.log(
+                {"epoch": epoch, f"label-{label_mode}/train_loss": loss.item(), "lr": scheduler.get_last_lr()[0]}, step=global_step,
+            )
             pbar.set_description(f"epoch {epoch} loss {loss.item():.4f}")
 
         # Evaluate
@@ -402,6 +486,12 @@ def train(
 
         # Save checkpoint
         if save_every and epoch % save_every == 0 or eval_loss < min_eval_loss:
+            if eval_loss < min_eval_loss:
+                logger.info(f"New best evaluation loss: prev {min_eval_loss:.4f} > new {eval_loss:.4f}")
+                min_eval_loss = eval_loss
+                model_file = run_dir / "ckpt_best.pth"
+            else:
+                model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             checkpoint = {
                 "model_state_dict": model.module.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
@@ -409,13 +499,8 @@ def train(
                 "global_step": global_step,
                 "config": config,
                 "eval_loss": eval_loss,
+                "min_eval_loss": min_eval_loss,
             }
-            if eval_loss < min_eval_loss:
-                logger.info(f"New best evaluation loss: prev {min_eval_loss:.4f} > new {eval_loss:.4f}")
-                min_eval_loss = eval_loss
-                model_file = run_dir / "ckpt_best.pth"
-            else:
-                model_file = run_dir / f"ckpt_ep{epoch:04d}.pth"
             logger.info(f"Saving checkpoint to {model_file}...")
             torch.save(checkpoint, str(model_file.resolve()))
             wandb.save(str(model_file.resolve()))

@@ -35,6 +35,7 @@ setup(
         "transformers>=3.2.0",
         "tokenizers",
         "datasets",
+        "allennlp",
     ],
     extras_require={"test": ["pytest"]}
 )
