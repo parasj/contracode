@@ -73,14 +73,7 @@ class TransformerModel(nn.Module):
 
 class Seq2SeqLSTM(nn.Module):
     def __init__(
-        self,
-        n_tokens,
-        d_model=512,
-        n_encoder_layers=2,
-        dropout=0.1,
-        activation="relu",
-        norm=True,
-        pad_id=None,
+        self, n_tokens, d_model=512, n_encoder_layers=2, dropout=0.1, activation="relu", norm=True, pad_id=None,
     ):
         super(Seq2SeqLSTM, self).__init__()
         assert norm

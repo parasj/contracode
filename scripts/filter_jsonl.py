@@ -20,10 +20,7 @@ def has_transform_error(json_dict):
     json_dict = _fix_json_dict(json_dict, ["function"], "function", "identifier")
 
     transform_payload = [
-        dict(
-            src=json_dict["function"],
-            augmentations=[{"fn": "identity_ast2ast"}],
-        )  # TODO: this key should be "code" for supervised set
+        dict(src=json_dict["function"], augmentations=[{"fn": "identity_ast2ast"}],)  # TODO: this key should be "code" for supervised set
     ]
     transform_payload = json.dumps(transform_payload)
     stdout, stderr = dispatch_to_node("transform.js", transform_payload)
@@ -158,9 +155,5 @@ def filter_datasets(paths, out_path: str, require_fields=[]):
 
 if __name__ == "__main__":
     fire.Fire(
-        {
-            "filter_dataset": filter_dataset,
-            "filter_datasets": filter_datasets,
-            "filter_dataset_parallel": filter_dataset_parallel,
-        }
+        {"filter_dataset": filter_dataset, "filter_datasets": filter_datasets, "filter_dataset_parallel": filter_dataset_parallel,}
     )

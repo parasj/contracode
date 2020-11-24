@@ -18,7 +18,7 @@ class CloneModel(nn.Module):
         pad_id=None,
         encoder_type="transformer",
         critic_type="bilinear_identity",
-        bilinear_rank=None
+        bilinear_rank=None,
     ):
         super().__init__()
         assert norm
@@ -39,17 +39,12 @@ class CloneModel(nn.Module):
                 activation=activation,
                 norm=norm,
                 pad_id=pad_id,
-                project=False
+                project=False,
             )
         elif encoder_type == "lstm":
             d_critic_rep = 4 * d_model  # 4 * d_model for 2 layer bidirectional LSTM
             self.encoder = CodeEncoderLSTM(
-                n_tokens=n_tokens,
-                d_model=d_model,
-                n_encoder_layers=n_encoder_layers,
-                dropout=dropout,
-                pad_id=pad_id,
-                project=False,
+                n_tokens=n_tokens, d_model=d_model, n_encoder_layers=n_encoder_layers, dropout=dropout, pad_id=pad_id, project=False,
             )
 
         if critic_type == "bilinear_diagonal":
@@ -108,7 +103,7 @@ class CloneModel(nn.Module):
 
         assert sim.ndim == 1
         assert sim.size(0) == rep.size(1)
-        
+
         return sim
 
     def forward(self, src_tok_ids, lengths=None):

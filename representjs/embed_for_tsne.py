@@ -119,9 +119,7 @@ def embed_augmented(
         encoder.config["project"] = "hidden"
         logger.info(f"Created CodeEncoderLSTM with {count_parameters(encoder)} params")
     elif encoder_type == "transformer":
-        encoder = CodeEncoder(
-            sp.GetPieceSize(), d_model, 256, 8, n_encoder_layers, 2048, 0.1, "relu", True, pad_id, project=False
-        )
+        encoder = CodeEncoder(sp.GetPieceSize(), d_model, 256, 8, n_encoder_layers, 2048, 0.1, "relu", True, pad_id, project=False)
         logger.info(f"Created CodeEncoder with {count_parameters(encoder)} params")
 
     # Load pretrained checkpoint
@@ -181,13 +179,7 @@ def embed_augmented(
     )
 
     loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=1,
-        shuffle=True,
-        collate_fn=pad_collate,
-        num_workers=num_workers,
-        drop_last=False,
-        pin_memory=False,
+        dataset, batch_size=1, shuffle=True, collate_fn=pad_collate, num_workers=num_workers, drop_last=False, pin_memory=False,
     )
 
     representations = []
@@ -246,8 +238,4 @@ def filter_augmented_dataset(data_path, out_path, min_alternatives):
 
 
 if __name__ == "__main__":
-    fire.Fire({
-        "embed_coco": embed_coco,
-        "embed_augmented": embed_augmented,
-        "filter_augmented_dataset": filter_augmented_dataset
-    })
+    fire.Fire({"embed_coco": embed_coco, "embed_augmented": embed_augmented, "filter_augmented_dataset": filter_augmented_dataset})

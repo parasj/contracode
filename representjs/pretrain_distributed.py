@@ -258,14 +258,25 @@ def pretrain_worker(gpu, ngpus_per_node, config):
         )
         logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
     elif config["loss_mode"] == "mlm":
-        model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id, encoder_type=config["encoder_type"],
-                n_encoder_layers=config["n_encoder_layers"], d_model=config["d_model"],
-                n_head=config["n_head"], d_ff=4 * config["d_model"])
+        model = CodeMLM(
+            sp.GetPieceSize(),
+            pad_id=pad_id,
+            encoder_type=config["encoder_type"],
+            n_encoder_layers=config["n_encoder_layers"],
+            d_model=config["d_model"],
+            n_head=config["n_head"],
+            d_ff=4 * config["d_model"],
+        )
         logger.info(f"Created CodeMLM model with {count_parameters(model)} params")
     elif config["loss_mode"] == "hybrid":
-        model = CodeContrastiveMLM(sp.GetPieceSize(), pad_id=pad_id,
-                n_encoder_layers=config["n_encoder_layers"], d_model=config["d_model"],
-                n_head=config["n_head"], d_ff=4 * config["d_model"])
+        model = CodeContrastiveMLM(
+            sp.GetPieceSize(),
+            pad_id=pad_id,
+            n_encoder_layers=config["n_encoder_layers"],
+            d_model=config["d_model"],
+            n_head=config["n_head"],
+            d_ff=4 * config["d_model"],
+        )
         logger.info(f"Created CodeContrastiveMLM model with {count_parameters(model)} params")
     else:
         raise ValueError(f"Bad loss mode {config['loss_mode']}")
@@ -296,7 +307,7 @@ def pretrain_worker(gpu, ngpus_per_node, config):
     if config["resume_path"]:
         logger.info(f"Loading parameters from {config['resume_path']}")
         # configure map_location properly
-        map_location = {'cuda:%d' % 0: 'cuda:%d' % config["rank"]}
+        map_location = {"cuda:%d" % 0: "cuda:%d" % config["rank"]}
         checkpoint = torch.load(config["resume_path"], map_location=map_location)
         model.module.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

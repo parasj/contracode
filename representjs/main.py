@@ -69,11 +69,7 @@ def _evaluate(
                     loss = loss / X.size(0)  # Average over num sequences, not target sequence lengths
                     # Thus, minimize bits per sequence.
                 elif loss_type == "nll_token":
-                    loss = F.cross_entropy(
-                        logits.transpose(1, 2),
-                        Y[:, 1:],
-                        ignore_index=pad_id,
-                    )
+                    loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id,)
 
                 # TODO: Compute Precision/Recall/F1 and BLEU
 
@@ -387,11 +383,7 @@ def train(
                 loss = loss / X.size(0)  # Average over num sequences, not target sequence lengths
                 # Thus, minimize bits per sequence.
             elif loss_type == "nll_token":
-                loss = F.cross_entropy(
-                    logits.transpose(1, 2),
-                    Y[:, 1:],
-                    ignore_index=pad_id,
-                )
+                loss = F.cross_entropy(logits.transpose(1, 2), Y[:, 1:], ignore_index=pad_id,)
             loss.backward()
             optimizer.step()
             scheduler.step()

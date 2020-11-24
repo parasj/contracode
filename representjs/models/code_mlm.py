@@ -43,7 +43,9 @@ class CodeMLM(nn.Module):
 
 class CodeContrastiveMLM(CodeMoCo):
     def __init__(self, n_tokens, d_model=512, d_rep=128, K=61440, m=0.999, T=0.07, pad_id=0, use_horovod=False, **encoder_args):
-        super().__init__(n_tokens, d_model=d_model, d_rep=d_rep, K=K, m=m, T=T, pad_id=pad_id, use_horovod=use_horovod, encoder_config=encoder_args)
+        super().__init__(
+            n_tokens, d_model=d_model, d_rep=d_rep, K=K, m=m, T=T, pad_id=pad_id, use_horovod=use_horovod, encoder_config=encoder_args
+        )
         self.n_tokens = n_tokens
         self.d_model = d_model
         self.d_rep = d_rep

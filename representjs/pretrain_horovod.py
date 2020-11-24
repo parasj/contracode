@@ -243,12 +243,16 @@ def pretrain(
     # Horovod: limit # of CPU threads to be used per worker.
     torch.set_num_threads(1)
 
-    kwargs = {'num_workers': 1, 'pin_memory': True}
+    kwargs = {"num_workers": 1, "pin_memory": True}
     # When supported, use 'forkserver' to spawn dataloader workers instead of 'fork' to prevent
     # issues with Infiniband implementations that are not fork-safe
-    if (kwargs.get('num_workers', 0) > 0 and hasattr(mp, '_supports_context') and
-            mp._supports_context and 'forkserver' in mp.get_all_start_methods()):
-        kwargs['multiprocessing_context'] = 'forkserver'
+    if (
+        kwargs.get("num_workers", 0) > 0
+        and hasattr(mp, "_supports_context")
+        and mp._supports_context
+        and "forkserver" in mp.get_all_start_methods()
+    ):
+        kwargs["multiprocessing_context"] = "forkserver"
 
     sp = spm.SentencePieceProcessor()
     sp.Load(config["spm_filepath"])
@@ -272,14 +276,26 @@ def pretrain(
         )
         logger.info(f"Created CodeMoCo model with {count_parameters(model)} params")
     elif config["loss_mode"] == "mlm":
-        model = CodeMLM(sp.GetPieceSize(), pad_id=pad_id, encoder_type=config["encoder_type"],
-                n_encoder_layers=config["n_encoder_layers"], d_model=config["d_model"],
-                n_head=config["n_head"], d_ff=4 * config["d_model"])
+        model = CodeMLM(
+            sp.GetPieceSize(),
+            pad_id=pad_id,
+            encoder_type=config["encoder_type"],
+            n_encoder_layers=config["n_encoder_layers"],
+            d_model=config["d_model"],
+            n_head=config["n_head"],
+            d_ff=4 * config["d_model"],
+        )
         logger.info(f"Created CodeMLM model with {count_parameters(model)} params")
     elif config["loss_mode"] == "hybrid":
-        model = CodeContrastiveMLM(sp.GetPieceSize(), pad_id=pad_id,
-                n_encoder_layers=config["n_encoder_layers"], d_model=config["d_model"],
-                n_head=config["n_head"], d_ff=4 * config["d_model"], use_horovod=True)
+        model = CodeContrastiveMLM(
+            sp.GetPieceSize(),
+            pad_id=pad_id,
+            n_encoder_layers=config["n_encoder_layers"],
+            d_model=config["d_model"],
+            n_head=config["n_head"],
+            d_ff=4 * config["d_model"],
+            use_horovod=True,
+        )
         logger.info(f"Created CodeContrastiveMLM model with {count_parameters(model)} params")
     else:
         raise ValueError(f"Bad loss mode {config['loss_mode']}")
@@ -313,18 +329,19 @@ def pretrain(
     compression = hvd.Compression.fp16 if config["fp16_allreduce"] else hvd.Compression.none
 
     # Horovod: wrap optimizer with DistributedOptimizer.
-    optimizer = hvd.DistributedOptimizer(optimizer,
-                                         named_parameters=model.named_parameters(),
-                                         compression=compression,
-                                         op=hvd.Adasum if config["use_adasum"] else hvd.Average,
-                                         gradient_predivide_factor=config["gradient_predivide_factor"])
-
+    optimizer = hvd.DistributedOptimizer(
+        optimizer,
+        named_parameters=model.named_parameters(),
+        compression=compression,
+        op=hvd.Adasum if config["use_adasum"] else hvd.Average,
+        gradient_predivide_factor=config["gradient_predivide_factor"],
+    )
 
     # Load checkpoint
     if config["resume_path"]:
         logger.info(f"Loading parameters from {config['resume_path']}")
         # configure map_location properly
-        map_location = {'cuda:%d' % 0: 'cuda:%d' % hvd.rank()}
+        map_location = {"cuda:%d" % 0: "cuda:%d" % hvd.rank()}
         checkpoint = torch.load(config["resume_path"], map_location=map_location)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -344,8 +361,7 @@ def pretrain(
         subword_regularization_alpha=config["subword_regularization_alpha"],
         max_length=config["max_length"],
     )
-    train_sampler = torch.utils.data.distributed.DistributedSampler(
-        train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=config["batch_size"],
@@ -353,7 +369,7 @@ def pretrain(
         collate_fn=pad_collate_contrastive if config["program_mode"] == "contrastive" else pad_collate,
         drop_last=True,
         sampler=train_sampler,
-        **kwargs
+        **kwargs,
     )
 
     # Train

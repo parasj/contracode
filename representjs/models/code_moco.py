@@ -61,11 +61,7 @@ class MoCoTemplate(nn.Module):
         assert self.K % batch_size == 0  # for simplicity
 
         # replace the keys at ptr (dequeue and enqueue)
-        self.queue = torch.cat([
-            self.queue[:, :ptr],
-            keys.T,
-            self.queue[:, ptr+batch_size:]
-        ], dim=1).detach()
+        self.queue = torch.cat([self.queue[:, :ptr], keys.T, self.queue[:, ptr + batch_size :]], dim=1).detach()
         # self.queue = self.queue.clone()
         # self.queue[:, ptr : ptr + batch_size] = keys.T
         ptr = (ptr + batch_size) % self.K  # move pointer
@@ -137,9 +133,12 @@ def concat_all_gather(tensor):
 class CodeMoCo(MoCoTemplate):
     def __init__(self, n_tokens, d_model=512, d_rep=128, K=107520, m=0.999, T=0.07, use_horovod=False, encoder_config={}, pad_id=None):
         super().__init__(
-            d_rep, K, m, T,
+            d_rep,
+            K,
+            m,
+            T,
             use_horovod=use_horovod,
-            encoder_params=dict(n_tokens=n_tokens, d_model=d_model, d_rep=d_rep, pad_id=pad_id, **encoder_config)
+            encoder_params=dict(n_tokens=n_tokens, d_model=d_model, d_rep=d_rep, pad_id=pad_id, **encoder_config),
         )
 
     def make_encoder(
@@ -180,4 +179,3 @@ class CodeMoCo(MoCoTemplate):
             logits, targets
         """
         return super().forward(im_q, im_k, lengths_q, lengths_k, q=q)
-

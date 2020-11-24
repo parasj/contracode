@@ -28,7 +28,7 @@ from utils import count_parameters, get_linear_schedule_with_warmup
 
 
 class CloneProgramsDataset(torch.utils.data.Dataset):
-    def __init__(self, filepath, sp, subword_regularization_alpha=0., max_length=1024):
+    def __init__(self, filepath, sp, subword_regularization_alpha=0.0, max_length=1024):
         self.sp = sp  # subword tokenizer
         self.subword_regularization_alpha = subword_regularization_alpha
         self.max_length = max_length
@@ -90,7 +90,7 @@ class ClonePositivesDataset(ClonePairDataset):
         indices = []
         for i in range(self.dataset.num_problems):
             # set_size = self.dataset.set_sizes[i]
-            start_idx = self.dataset.cumulative_sizes[i-1] if i > 0 else 0
+            start_idx = self.dataset.cumulative_sizes[i - 1] if i > 0 else 0
             end_idx = self.dataset.cumulative_sizes[i]  # exclusive, index of solution after the last solution for this problem
             for idx1 in range(start_idx, end_idx - 1):
                 for idx2 in range(start_idx + 1, end_idx):
@@ -104,11 +104,11 @@ class CloneNegativesDataset(ClonePairDataset):
         # Get all pairs of indices of programs solving different problems
         indices = []
         for i in range(self.dataset.num_problems - 1):
-            start_idx_i = self.dataset.cumulative_sizes[i-1] if i > 0 else 0
+            start_idx_i = self.dataset.cumulative_sizes[i - 1] if i > 0 else 0
             end_idx_i = self.dataset.cumulative_sizes[i]
 
             for j in range(1, self.dataset.num_problems):
-                start_idx_j = self.dataset.cumulative_sizes[j-1]
+                start_idx_j = self.dataset.cumulative_sizes[j - 1]
                 end_idx_j = self.dataset.cumulative_sizes[j]
 
                 for idx_i in range(start_idx_i, end_idx_i):
@@ -198,7 +198,7 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, save
                 roc_auc = 0
                 ap_score = 0
             pbar.set_description(f"evaluate average loss {avg_loss:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f}")
-        
+
         # Compute ROC AUC and AP
         y_true = np.concatenate(y_true)
         y_scores = np.concatenate(y_scores)
@@ -211,16 +211,12 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, save
         "eval/roc_auc_score": roc_auc,
         "eval/ap_score": ap_score,
         "eval/num_examples": num_examples,
-        "eval/num_positive": np.sum(y_true)
+        "eval/num_positive": np.sum(y_true),
     }
 
     if save_path:
         logger.info("Saving labels, scores and metrics to {}", save_path)
-        torch.save({
-            "y_true": y_true,
-            "y_scores": y_scores,
-            "metrics": metrics
-        }, save_path)
+        torch.save({"y_true": y_true, "y_scores": y_scores, "metrics": metrics}, save_path)
 
     return (-roc_auc, metrics)
 
@@ -284,7 +280,7 @@ def _evaluate_edit_distance(loader, sp, edit_distance_mode="tokens", save_path=N
             y_scores.append(similarity)
 
             if i % 10 == 0:
-                ytc = np.concatenate(y_true[:i+1])
+                ytc = np.concatenate(y_true[: i + 1])
                 if ytc.sum() != 0 and ytc.sum() < len(ytc):
                     ysc = np.concatenate(y_scores)
                     roc_auc = roc_auc_score(ytc, ysc)
@@ -293,7 +289,7 @@ def _evaluate_edit_distance(loader, sp, edit_distance_mode="tokens", save_path=N
                     roc_auc = 0
                     ap_score = 0
                 pbar.set_description(f"evaluate average similarity {avg_similarity:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f}")
-        
+
         # Compute ROC AUC and AP
         y_true = np.concatenate(y_true)
         y_scores = np.concatenate(y_scores)
@@ -305,16 +301,12 @@ def _evaluate_edit_distance(loader, sp, edit_distance_mode="tokens", save_path=N
         "eval/roc_auc_score": roc_auc,
         "eval/ap_score": ap_score,
         "eval/num_examples": num_examples,
-        "eval/num_positive": np.sum(y_true)
+        "eval/num_positive": np.sum(y_true),
     }
 
     if save_path:
         logger.info("Saving labels, scores and metrics to {}", save_path)
-        torch.save({
-            "y_true": y_true,
-            "y_scores": y_scores,
-            "metrics": metrics
-        }, save_path)
+        torch.save({"y_true": y_true, "y_scores": y_scores, "metrics": metrics}, save_path)
 
     return (-roc_auc, metrics)
 
@@ -322,9 +314,9 @@ def _evaluate_edit_distance(loader, sp, edit_distance_mode="tokens", save_path=N
 def train(
     run_name: str,
     # Data
-    train_filepath: str="data/codeclone/train_data.json",
-    eval_filepath: str="data/codeclone/valid_data.json",
-    spm_filepath: str="data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
+    train_filepath: str = "data/codeclone/train_data.json",
+    eval_filepath: str = "data/codeclone/valid_data.json",
+    spm_filepath: str = "data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
     num_workers=1,
     max_seq_len=1024,
     max_eval_seq_len=1024,
@@ -394,17 +386,19 @@ def train(
     if balance_negatives:
         positive_weight = 1 / len(train_programs)
         negative_weight = 1 / len(train_negatives)
-        weights = torch.cat([
-            torch.zeros(len(train_programs)) + positive_weight,
-            torch.zeros(len(train_negatives)) + negative_weight
-        ])
+        weights = torch.cat([torch.zeros(len(train_programs)) + positive_weight, torch.zeros(len(train_negatives)) + negative_weight])
         sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))
     else:
         sampler = None
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=not balance_negatives, num_workers=num_workers,
-        drop_last=True, collate_fn=pad_collate, sampler=sampler
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=not balance_negatives,
+        num_workers=num_workers,
+        drop_last=True,
+        collate_fn=pad_collate,
+        sampler=sampler,
     )
 
     # Create eval dataset and dataloader
@@ -426,7 +420,7 @@ def train(
         n_encoder_layers=n_encoder_layers,
         d_model=d_model,
         critic_type=critic_type,
-        bilinear_rank=critic_bilinear_rank
+        bilinear_rank=critic_bilinear_rank,
     )
     logger.info(f"Created CloneModel {encoder_type}, {critic_type} with {count_parameters(model)} params")
 
@@ -503,7 +497,7 @@ def train(
                     "epoch": epoch,
                     "train/loss": loss.item(),
                     "lr": scheduler.get_last_lr()[0],
-                    "train/labels_mean": labels.float().mean().item()
+                    "train/labels_mean": labels.float().mean().item(),
                 }
 
                 # Compute scores in training batch
@@ -555,9 +549,9 @@ def train(
 
 def eval(
     # Data
-    eval_filepath: str="data/codeclone/test_data.json",
-    spm_filepath: str="data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
-    save_path: str=None,  # path to save labels, similarity scores and metrics
+    eval_filepath: str = "data/codeclone/test_data.json",
+    spm_filepath: str = "data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
+    save_path: str = None,  # path to save labels, similarity scores and metrics
     num_workers=1,
     max_seq_len=-1,
     subsample_negatives=False,
@@ -623,7 +617,7 @@ def eval(
             n_encoder_layers=n_encoder_layers,
             d_model=d_model,
             critic_type=critic_type,
-            bilinear_rank=critic_bilinear_rank
+            bilinear_rank=critic_bilinear_rank,
         )
         logger.info(f"Created CloneModel {encoder_type}, {critic_type}")
 
@@ -695,8 +689,8 @@ def split(data_path="data/codeclone/full_data.json", output_dir="data/codeclone/
     logger.info("Split: {} ({}%) train problems", num_train, num_train / num_problems)
     logger.info("Split: {} ({}%) valid problems", num_valid, num_valid / num_problems)
     test = [all_problems[i] for i in indices[:num_test]]
-    valid = [all_problems[i] for i in indices[num_test:num_test+num_valid]]
-    train = [all_problems[i] for i in indices[num_test+num_valid:]]
+    valid = [all_problems[i] for i in indices[num_test : num_test + num_valid]]
+    train = [all_problems[i] for i in indices[num_test + num_valid :]]
     logger.info("Split: {} ({}%) test problems, {} solutions", num_test, num_test / num_problems, sum(map(len, test)))
     assert len(test) == num_test
     assert len(valid) == num_valid
@@ -708,6 +702,7 @@ def split(data_path="data/codeclone/full_data.json", output_dir="data/codeclone/
         with open(output_path, "w") as out_f:
             json.dump(split_problems, out_f)
         logger.info("Wrote programs to {}", output_path)
+
     write(test, "test")
     write(valid, "valid")
     write(train, "train")

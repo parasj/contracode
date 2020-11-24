@@ -49,20 +49,16 @@ class ModelArguments:
         metadata={"help": "The model checkpoint for weights initialization. Leave None if you want to train a model from scratch."},
     )
     model_type: Optional[str] = field(
-        default=None,
-        metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
+        default=None, metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
     )
     config_name: Optional[str] = field(
-        default=None,
-        metadata={"help": "Pretrained config name or path if not the same as model_name"},
+        default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"},
     )
     tokenizer_name: Optional[str] = field(
-        default=None,
-        metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"},
+        default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"},
     )
     cache_dir: Optional[str] = field(
-        default=None,
-        metadata={"help": "Where do you want to store the pretrained models downloaded from s3"},
+        default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"},
     )
 
 
@@ -74,29 +70,24 @@ class DataTrainingArguments:
 
     train_data_file: Optional[str] = field(default=None, metadata={"help": "The input training data file (a text file)."})
     eval_data_file: Optional[str] = field(
-        default=None,
-        metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
+        default=None, metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
     )
     line_by_line: bool = field(
-        default=False,
-        metadata={"help": "Whether distinct lines of text in the dataset are to be handled as distinct sequences."},
+        default=False, metadata={"help": "Whether distinct lines of text in the dataset are to be handled as distinct sequences."},
     )
 
     mlm: bool = field(
-        default=False,
-        metadata={"help": "Train with masked-language modeling loss instead of language modeling."},
+        default=False, metadata={"help": "Train with masked-language modeling loss instead of language modeling."},
     )
     mlm_probability: float = field(
-        default=0.15,
-        metadata={"help": "Ratio of tokens to mask for masked language modeling loss"},
+        default=0.15, metadata={"help": "Ratio of tokens to mask for masked language modeling loss"},
     )
     plm_probability: float = field(
         default=1 / 6,
         metadata={"help": "Ratio of length of a span of masked tokens to surrounding context length for permutation language modeling."},
     )
     max_span_length: int = field(
-        default=5,
-        metadata={"help": "Maximum length of a span of masked tokens for permutation language modeling."},
+        default=5, metadata={"help": "Maximum length of a span of masked tokens for permutation language modeling."},
     )
 
     block_size: int = field(
@@ -108,8 +99,7 @@ class DataTrainingArguments:
         },
     )
     overwrite_cache: bool = field(
-        default=False,
-        metadata={"help": "Overwrite the cached training and evaluation sets"},
+        default=False, metadata={"help": "Overwrite the cached training and evaluation sets"},
     )
 
 
@@ -134,8 +124,7 @@ class BERTPretokenizedPretrainingDataset(Dataset):
 
 
 def get_dataset(
-    args: DataTrainingArguments,
-    evaluate: bool = False,
+    args: DataTrainingArguments, evaluate: bool = False,
 ):
     file_path = args.eval_data_file if evaluate else args.train_data_file
     return BERTPretokenizedPretrainingDataset(file_path)
@@ -244,26 +233,13 @@ def main():
     logging.info("Loading train dataset")
     train_dataset = get_dataset(data_args) if training_args.do_train else None
     logging.info("Loading eval dataset")
-    eval_dataset = (
-        get_dataset(
-            data_args,
-            evaluate=True,
-        )
-        if training_args.do_eval
-        else None
-    )
+    eval_dataset = get_dataset(data_args, evaluate=True,) if training_args.do_eval else None
     if config.model_type == "xlnet":
         data_collator = DataCollatorForPermutationLanguageModeling(
-            tokenizer=tokenizer,
-            plm_probability=data_args.plm_probability,
-            max_span_length=data_args.max_span_length,
+            tokenizer=tokenizer, plm_probability=data_args.plm_probability, max_span_length=data_args.max_span_length,
         )
     else:
-        data_collator = DataCollatorForLanguageModeling(
-            tokenizer=tokenizer,
-            mlm=data_args.mlm,
-            mlm_probability=data_args.mlm_probability,
-        )
+        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=data_args.mlm, mlm_probability=data_args.mlm_probability,)
 
     # Initialize our Trainer
     logging.info("Initializing trainer")
