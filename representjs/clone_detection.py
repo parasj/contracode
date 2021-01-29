@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 import tqdm
-from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.metrics import roc_auc_score, average_precision_score, accuracy_score
 
 import torch.nn.functional as F
 import tqdm
@@ -22,13 +22,15 @@ import wandb
 from loguru import logger
 
 from data.util import Timer, normalize_program, EncodeAsIds
+from data.old_dataloader import _augment_server
 from models.clone import CloneModel
 from representjs import RUN_DIR
 from utils import count_parameters, get_linear_schedule_with_warmup
 
 
 class CloneProgramsDataset(torch.utils.data.Dataset):
-    def __init__(self, filepath, sp, subword_regularization_alpha=0.0, max_length=1024):
+    def __init__(self, filepath, sp, subword_regularization_alpha=0.0, max_length=1024, augmentations=None):
+        self.augmentations = augmentations
         self.sp = sp  # subword tokenizer
         self.subword_regularization_alpha = subword_regularization_alpha
         self.max_length = max_length
@@ -54,6 +56,12 @@ class CloneProgramsDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         program = self.all_solutions[idx]
+        if self.augmentations:
+            # Set up transformation input
+            transform_payload = [dict(src=program, augmentations=self.augmentations)]
+            program = _augment_server(transform_payload)
+            assert isinstance(program, list) and len(program) == 1
+            program = program[0]
         return self.encode(program)
 
     def encode(self, program):
@@ -162,9 +170,54 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
         return res, deno
 
 
+def best_binary_accuracy_score(y_true, y_score, num_thresholds=100):
+    assert y_true.shape == y_score.shape
+    thresholds = np.linspace(0, 1, num=num_thresholds)
+    best_acc = 0.0
+    for threshold in thresholds:
+        y_pred = (y_score > threshold).astype(y_true.dtype)
+        acc = accuracy_score(y_true, y_pred)
+        best_acc = max(best_acc, acc)
+    return best_acc
+
+
 @torch.no_grad()
-def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, save_path=None):
+def _evaluate(model, loaders, sp: spm.SentencePieceProcessor, pad_id, use_cuda=True, save_path=None, similarity_reduction='adversarial'):
     model.eval()
+
+    def _get_generator(data_loaders, pbar=True):
+        if pbar:
+            loader0 = tqdm.tqdm(data_loaders[0], desc="evaluate")
+        else:
+            loader0 = data_loaders[0]
+
+        remaining_data_loaders = [iter(loader) for loader in data_loaders[1:]]
+
+        for batch0 in loader0:
+            batches = [batch0] + [next(loader) for loader in remaining_data_loaders]
+            X, lengths, labels = zip(*batches)
+            # In [11]: X[0].shape
+            # Out[11]: torch.Size([32, 928])
+            # In [12]: lengths[0].shape
+            # Out[12]: torch.Size([32])
+            # In [13]: labels[0].shape
+            # Out[13]: torch.Size([16])
+
+            # X is a tuple of [2B, L] dimensional tensors.
+            # Rearrange and pad to get a single tensor.
+            X_LB = [x.transpose(0, 1) for x in X]
+            X_LAB = pad_sequence(X_LB, batch_first=False, padding_value=pad_id)
+            X = X_LAB.transpose(0, 2)  # [2B, adversarial_samples, L]
+            X = X.contiguous()
+
+            lengths = torch.stack(lengths, dim=1)  # [2B, adversarial_samples]
+
+            # just use labels = labels[0] since the labels don't
+            # change between different augmentation samples
+            labels = labels[0]  # [B]
+            # labels = torch.stack(labels, dim=1)  # [B, adversarial_samples]
+
+            yield X, lengths, labels
 
     with Timer() as t:
         # Compute average loss
@@ -173,14 +226,30 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, save
         # Compute ROC AUC, AP
         y_true = []
         y_scores = []
-        pbar = tqdm.tqdm(loader, desc="evalaute")
-        for X, lengths, labels in pbar:
+        generator = _get_generator(loaders, True)
+        for X, lengths, labels in generator:
             y_true.append(labels.numpy())
             if use_cuda:
                 X, lengths, labels = X.cuda(), lengths.cuda(), labels.cuda()
+            two_B, adversarial_samples, L = X.shape
+
+            # Compute similarity
+            similarity = model(X.view(two_B*adversarial_samples, L), lengths.view(-1))  # B
+
+            # Reduce similarity adversarially
+            similarity = similarity.view(two_B // 2, adversarial_samples)
+            if similarity_reduction == 'adversarial':
+                min_similarity, _ = torch.min(similarity, dim=1)
+                max_similarity, _ = torch.max(similarity, dim=1)
+                similarity = min_similarity * labels + max_similarity * (1 - labels)
+            elif similarity_reduction == 'mean':
+                similarity = torch.mean(similarity, dim=1)
+
+            # print('sim shape', similarity.shape, 'dims', two_B, adversarial_samples, L)
+            # print('min sim shape', min_similarity.shape)
+            # print('max sim shape', max_similarity.shape)
 
             # Compute loss
-            similarity = model(X, lengths)  # B
             loss = F.binary_cross_entropy_with_logits(similarity, labels.float())
 
             total_loss += loss.item() * X.size(0)
@@ -189,27 +258,33 @@ def _evaluate(model, loader, sp: spm.SentencePieceProcessor, use_cuda=True, save
 
             y_scores.append(similarity.cpu().numpy())
 
-            ytc = np.concatenate(y_true)
-            if ytc.sum() != 0 and ytc.sum() < len(ytc):
+            if num_examples % 5 == 0:
+                ytc = np.concatenate(y_true)
                 ysc = np.concatenate(y_scores)
-                roc_auc = roc_auc_score(ytc, ysc)
-                ap_score = average_precision_score(ytc, ysc)
-            else:
-                roc_auc = 0
-                ap_score = 0
-            pbar.set_description(f"evaluate average loss {avg_loss:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f}")
+                accuracy = best_binary_accuracy_score(ytc, ysc)
+
+                if ytc.sum() != 0 and ytc.sum() < len(ytc):
+                    roc_auc = roc_auc_score(ytc, ysc)
+                    ap_score = average_precision_score(ytc, ysc)
+                else:
+                    roc_auc = 0
+                    ap_score = 0
+
+                print(f"evaluate average loss {avg_loss:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f} acc {accuracy:.4f}")
 
         # Compute ROC AUC and AP
         y_true = np.concatenate(y_true)
         y_scores = np.concatenate(y_scores)
         roc_auc = roc_auc_score(y_true, y_scores)
         ap_score = average_precision_score(y_true, y_scores)
+        accuracy = best_binary_accuracy_score(y_true, y_scores)
 
     logger.debug(f"Loss calculation took {t.interval:.3f}s")
     metrics = {
         "eval/loss": avg_loss,
         "eval/roc_auc_score": roc_auc,
         "eval/ap_score": ap_score,
+        "eval/accuracy": accuracy,
         "eval/num_examples": num_examples,
         "eval/num_positive": np.sum(y_true),
     }
@@ -230,7 +305,11 @@ def _levenshtein_similarity(a, b):
 
 
 @torch.no_grad()
-def _evaluate_edit_distance(loader, sp, edit_distance_mode="tokens", save_path=None):
+def _evaluate_edit_distance(loaders, sp, edit_distance_mode="tokens", save_path=None):
+    # TODO: implement adversarial evaluation for edit distance
+    assert len(loaders) == 1
+    loader = loaders[0]
+
     assert edit_distance_mode == "tokens"
     ray.init()
 
@@ -469,7 +548,7 @@ def train(
 
     # Initial evaluation
     logger.info(f"Evaluating model initially ({global_step} steps)...")
-    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, use_cuda=use_cuda)
+    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, pad_id=pad_id, use_cuda=use_cuda)
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} initial ({global_step} steps): {value:.4f}")
         max_eval_metrics[metric] = value
@@ -517,7 +596,7 @@ def train(
                 # Evaluate
                 if evaluate_every_steps and global_step % evaluate_every_steps == 0:
                     logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
-                    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, use_cuda=use_cuda)
+                    eval_metric, eval_metrics = _evaluate(model, eval_loader, sp, pad_id=pad_id, use_cuda=use_cuda)
                     for metric, value in eval_metrics.items():
                         logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
                         max_eval_metrics[metric] = max(value, max_eval_metrics[metric])
@@ -552,7 +631,7 @@ def eval(
     eval_filepath: str = "data/codeclone/test_data.json",
     spm_filepath: str = "data/codesearchnet_javascript/csnjs_8k_9995p_unigram_url.model",
     save_path: str = None,  # path to save labels, similarity scores and metrics
-    num_workers=1,
+    num_workers=1,  # num_loaders per loader.
     max_seq_len=-1,
     subsample_negatives=False,
     # Model
@@ -567,11 +646,18 @@ def eval(
     edit_distance_mode=None,  # None, "strings", "tokens"
     # Optimization
     batch_size=16,
+    adversarial_samples=0,  # 0 = don't use data augmentation.
+                            # k > 0 = sample k augs for each program in a pair,
+                            #   report minimum cosine similarity for pos pairs; max for neg pairs.
+                            #   shuffle_loader must be False
+    terser_module=False,  # Use when minifying an ES6 module. "use strict" is implied and names can be mangled on the top scope. If compress or mangle is enabled then the toplevel option will be enabled.
+    terser_toplevel=False,  # set to true if you wish to enable top level variable and function name mangling and to drop unused variables and functions.
     # Loss
     subword_regularization_alpha: float = 0,
     # Computational
     use_cuda: bool = True,
     seed: int = 0,
+    shuffle_loader: bool = False,
 ):
     """Evaluate model"""
     torch.manual_seed(seed)
@@ -591,7 +677,18 @@ def eval(
 
     # Create eval dataset and dataloader
     logger.info(f"Eval data path {eval_filepath}")
-    eval_programs = CloneProgramsDataset(eval_filepath, sp, subword_regularization_alpha)
+    augmentations = [
+        {
+            "fn": "terser",
+            "options": {
+                   "prob": 0.75,
+                   "module": terser_module,
+                   "toplevel": terser_toplevel
+            }
+        }
+    ] if adversarial_samples > 0 else None
+    eval_programs = CloneProgramsDataset(eval_filepath, sp, subword_regularization_alpha,
+        augmentations=augmentations)
     eval_positives = ClonePositivesDataset(eval_programs)
     if subsample_negatives:
         eval_negatives = CloneNegativesDataset(eval_programs, max_pairs=len(eval_positives), seed=seed)
@@ -599,9 +696,18 @@ def eval(
         eval_negatives = CloneNegativesDataset(eval_programs)
     eval_dataset = torch.utils.data.ConcatDataset([eval_positives, eval_negatives])
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
-    eval_loader = torch.utils.data.DataLoader(
-        eval_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=pad_collate
-    )
+    assert adversarial_samples == 0 or shuffle_loader is False  # don't shuffle because we make copies of the loader
+                                                                # that need to access indices in the same order.
+    eval_loaders = []
+    for _ in range(max(1, adversarial_samples)):
+        eval_loader = torch.utils.data.DataLoader(
+            eval_dataset,
+            batch_size=batch_size,
+            shuffle=shuffle_loader,
+            num_workers=num_workers,
+            collate_fn=pad_collate
+        )
+        eval_loaders.append(eval_loader)
 
     epoch = 0
     global_step = 0
@@ -654,10 +760,10 @@ def eval(
     # Evaluation
     logger.info(f"Evaluating model ({global_step} steps)...")
     if edit_distance_mode:
-        _, eval_metrics = _evaluate_edit_distance(eval_loader, sp, edit_distance_mode=edit_distance_mode, save_path=save_path)
+        _, eval_metrics = _evaluate_edit_distance(eval_loaders, sp, edit_distance_mode=edit_distance_mode, save_path=save_path)
     else:
         model.eval()
-        _, eval_metrics = _evaluate(model, eval_loader, sp, use_cuda=use_cuda, save_path=save_path)
+        _, eval_metrics = _evaluate(model, eval_loaders, sp, pad_id=pad_id, use_cuda=use_cuda, save_path=save_path)
 
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} initial ({epoch} epochs, {global_step} steps): {value:.4f}")

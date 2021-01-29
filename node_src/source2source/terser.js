@@ -13,12 +13,13 @@ module.exports = (js_src, {
     prob = 0.5, prob_compress = 0.5, prob_mangle = 0.1, prob_remove_comments = 0.5,
     prob_keep_fnames = 0.5, prob_keep_classnames = 0.5, prob_compress_unsafe = 0.5, prob_compress_arguments = 0.5,
     prob_compress_booleans_as_integers = 0.5, prob_compress_drop_console = 0.5, prob_compress_hoist_vars = 0.5,
-    prob_compress_dead_code = 0.5, module = false
+    prob_compress_dead_code = 0.5, module = false, toplevel = false
 }) => {
-    console.log("terser")
+    console.log("terser prob", prob, "prob_compress", prob_compress, "prob_mangle", prob_mangle, "prob_remove_comments", prob_remove_comments, "module", module, "toplevel", toplevel)
     if (Math.random() < prob) {
         console.log("terser applying")
         options["module"] = module;
+        options["toplevel"] = toplevel;
         if (Math.random() < prob_compress) {
             console.log("compressing")
             options["compress"] = {

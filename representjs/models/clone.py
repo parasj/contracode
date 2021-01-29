@@ -95,7 +95,7 @@ class CloneModel(nn.Module):
             rep0 = torch.mm(rep[0], self.output_weight.T)
             rep0 = nn.functional.normalize(rep0, dim=-1)
 
-            # rep1 = torch.eimsum("bd,dr->br", rep[1], self.output_weight.T)
+            # rep1 = torch.einsum("bd,dr->br", rep[1], self.output_weight.T)
             rep1 = torch.mm(rep[1], self.output_weight.T)
             rep1 = nn.functional.normalize(rep1, dim=-1)
 
