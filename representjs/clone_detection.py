@@ -54,9 +54,9 @@ class CloneProgramsDataset(torch.utils.data.Dataset):
     def __len__(self):
         return self.cumulative_sizes[-1]
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx, augment=True):
         program = self.all_solutions[idx]
-        if self.augmentations:
+        if self.augmentations and augment:
             # Set up transformation input
             transform_payload = [dict(src=program, augmentations=self.augmentations)]
             program = _augment_server(transform_payload)
@@ -86,7 +86,8 @@ class ClonePairDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         idx1, idx2 = self.indices[idx]
-        prog1_toks, prog2_toks = self.dataset[idx1], self.dataset[idx2]
+        prog1_toks = self.dataset.__getitem__(idx1, augment=True)
+        prog2_toks = self.dataset.__getitem__(idx2, augment=False)
         return prog1_toks, prog2_toks, self.label
 
 
