@@ -191,51 +191,52 @@ def se_auc(auc, n_p, n_n):
     return SE_auc
 
 
+def _get_generator(data_loaders, pad_id, pbar=True, pbar_desc=""):
+    """A generator zipping multiple data loaders"""
+    if pbar:
+        loader0 = tqdm.tqdm(data_loaders[0], desc=pbar_desc)
+    else:
+        loader0 = data_loaders[0]
+
+    remaining_data_loaders = [iter(loader) for loader in data_loaders[1:]]
+
+    for batch0 in loader0:
+        batches = [batch0] + [next(loader) for loader in remaining_data_loaders]
+        X, lengths, labels = zip(*batches)
+        # In [11]: X[0].shape
+        # Out[11]: torch.Size([32, 928])
+        # In [12]: lengths[0].shape
+        # Out[12]: torch.Size([32])
+        # In [13]: labels[0].shape
+        # Out[13]: torch.Size([16])
+
+        # X is a tuple of [2B, L] dimensional tensors.
+        # Rearrange and pad to get a single tensor.
+        X_LB = [x.transpose(0, 1) for x in X]
+        X_LAB = pad_sequence(X_LB, batch_first=False, padding_value=pad_id)
+        X = X_LAB.transpose(0, 2)  # [2B, adversarial_samples, L]
+        X = X.contiguous()
+
+        lengths = torch.stack(lengths, dim=1)  # [2B, adversarial_samples]
+
+        # just use labels = labels[0] since the labels don't
+        # change between different augmentation samples
+        labels = labels[0]  # [B]
+        # labels = torch.stack(labels, dim=1)  # [B, adversarial_samples]
+
+        yield X, lengths, labels
+
+
 @torch.no_grad()
-def _evaluate(model, loaders, sp: spm.SentencePieceProcessor, pad_id, use_cuda=True, save_path=None, similarity_reduction='adversarial'):
+def _evaluate(model, loaders, sp: spm.SentencePieceProcessor, pad_id, use_cuda=True, save_path=None):
     model.eval()
-    assert similarity_reduction == 'adversarial'
-
-    def _get_generator(data_loaders, pbar=True):
-        if pbar:
-            loader0 = tqdm.tqdm(data_loaders[0], desc="evaluate")
-        else:
-            loader0 = data_loaders[0]
-
-        remaining_data_loaders = [iter(loader) for loader in data_loaders[1:]]
-
-        for batch0 in loader0:
-            batches = [batch0] + [next(loader) for loader in remaining_data_loaders]
-            X, lengths, labels = zip(*batches)
-            # In [11]: X[0].shape
-            # Out[11]: torch.Size([32, 928])
-            # In [12]: lengths[0].shape
-            # Out[12]: torch.Size([32])
-            # In [13]: labels[0].shape
-            # Out[13]: torch.Size([16])
-
-            # X is a tuple of [2B, L] dimensional tensors.
-            # Rearrange and pad to get a single tensor.
-            X_LB = [x.transpose(0, 1) for x in X]
-            X_LAB = pad_sequence(X_LB, batch_first=False, padding_value=pad_id)
-            X = X_LAB.transpose(0, 2)  # [2B, adversarial_samples, L]
-            X = X.contiguous()
-
-            lengths = torch.stack(lengths, dim=1)  # [2B, adversarial_samples]
-
-            # just use labels = labels[0] since the labels don't
-            # change between different augmentation samples
-            labels = labels[0]  # [B]
-            # labels = torch.stack(labels, dim=1)  # [B, adversarial_samples]
-
-            yield X, lengths, labels
 
     with Timer() as t:
         # Compute ROC AUC, AP
         num_examples_by_adversarial_samples = defaultdict(lambda: 0)
         y_true_by_adversarial_samples = defaultdict(list)
         y_scores_by_adversarial_samples = defaultdict(list)
-        generator = _get_generator(loaders, True)
+        generator = _get_generator(loaders, pad_id=pad_id, pbar=True, pbar_desc="evaluate")
 
         def _summarize_stats(y_true, y_scores):
             ytc = np.concatenate(y_true)
@@ -250,7 +251,6 @@ def _evaluate(model, loaders, sp: spm.SentencePieceProcessor, pad_id, use_cuda=T
                 ap_score = average_precision_score(ytc, ysc)
 
             return roc_auc, se_roc_auc, ap_score, accuracy, num_pos, num_neg
-
 
         for X, lengths, labels in generator:
             if use_cuda:
@@ -321,25 +321,30 @@ def _levenshtein_similarity(a, b):
 
 
 @torch.no_grad()
-def _evaluate_edit_distance(loaders, sp, edit_distance_mode="tokens", save_path=None):
+def _evaluate_edit_distance(loaders, sp, pad_id, edit_distance_mode="tokens", save_path=None):
     # TODO: implement adversarial evaluation for edit distance
-    assert len(loaders) == 1
-    loader = loaders[0]
+    # assert len(loaders) == 1
+    # loader = loaders[0]
 
     assert edit_distance_mode == "tokens"
     ray.init()
 
     @ray.remote
-    def _compute_similarity(X, lengths):
-        assert X.ndim == 2
-        assert lengths.ndim == 1
+    def _compute_similarity(X, lengths, labels):
+        two_B, adversarial_samples, L = X.shape
+        B = two_B // 2
+
+        assert X.ndim == 3
+        assert lengths.ndim == 2
+        assert lengths.shape == (two_B, adversarial_samples)
+        assert labels.shape == (B,)
 
         # Compute similarity
-        X = X.view(2, X.size(0) // 2, X.size(1))
-        lengths = lengths.view(2, lengths.size(0) // 2)
-        similarity = np.zeros(X.size(1), dtype=np.float32)
+        X = X.view(2, B*adversarial_samples, L)
+        lengths = lengths.view(2, B*adversarial_samples)
+        similarity = torch.zeros(B*adversarial_samples, dtype=torch.float32)
 
-        for i in range(X.size(1)):
+        for i in range(B*adversarial_samples):
             a_len = lengths[0, i]
             b_len = lengths[1, i]
             a = list(X[0, i].numpy())[:a_len]  # remove padding
@@ -348,20 +353,28 @@ def _evaluate_edit_distance(loaders, sp, edit_distance_mode="tokens", save_path=
             # b = list(X[1, i].numpy())[1:b_len-1]  # remove bos_id, eos_id and padding
             similarity[i] = _levenshtein_similarity(a, b)  # B
 
-        return similarity
+        similarity = similarity.view(B, adversarial_samples)
+
+        # Aggregate adversarially. similarity is [B, adversarial_samples]
+        min_similarity, _ = torch.min(similarity, dim=1)
+        max_similarity, _ = torch.max(similarity, dim=1)
+        similarity = min_similarity * labels + max_similarity * (1 - labels)
+
+        return similarity.numpy()  # [B,]
 
     with Timer() as t:
         # Compute average loss
+        adversarial_samples = len(loaders)
         total_similarity = 0
         num_examples = 0
 
         y_true = []
         y_scores = []
 
-        pbar = tqdm.tqdm(loader, desc="queue up evalaute")
+        generator = _get_generator(loaders, pad_id=pad_id, pbar=True, pbar_desc="queue up evalaute")
         similarity_futures = []
-        for X, lengths, labels in pbar:
-            f = _compute_similarity.remote(X, lengths)
+        for X, lengths, labels in generator:
+            f = _compute_similarity.remote(X, lengths, labels)
             similarity_futures.append(f)
 
             num_examples += X.size(1)
@@ -376,27 +389,32 @@ def _evaluate_edit_distance(loaders, sp, edit_distance_mode="tokens", save_path=
 
             if i % 10 == 0:
                 ytc = np.concatenate(y_true[: i + 1])
+                num_pos, num_neg = np.sum(ytc), np.sum(ytc == 0)
                 if ytc.sum() != 0 and ytc.sum() < len(ytc):
                     ysc = np.concatenate(y_scores)
                     roc_auc = roc_auc_score(ytc, ysc)
+                    se_roc_auc = se_auc(roc_auc, num_pos, num_neg)
                     ap_score = average_precision_score(ytc, ysc)
                 else:
                     roc_auc = 0
                     ap_score = 0
-                pbar.set_description(f"evaluate average similarity {avg_similarity:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f}")
+                pbar.set_description(f"evaluate with {adversarial_samples} adversarial samples: avg similarity {avg_similarity:.4f} roc_auc {roc_auc:.4f}pm{se_roc_auc:.4f} ap {ap_score:.4f}")
 
         # Compute ROC AUC and AP
         y_true = np.concatenate(y_true)
+        num_pos, num_neg = np.sum(y_true), np.sum(y_true == 0)
         y_scores = np.concatenate(y_scores)
         roc_auc = roc_auc_score(y_true, y_scores)
+        se_roc_auc = se_auc(roc_auc, num_pos, num_neg)
         ap_score = average_precision_score(y_true, y_scores)
 
     logger.debug(f"Loss calculation took {t.interval:.3f}s")
     metrics = {
-        "eval/roc_auc_score": roc_auc,
-        "eval/ap_score": ap_score,
-        "eval/num_examples": num_examples,
-        "eval/num_positive": np.sum(y_true),
+        f"eval/roc_auc_score/adv{adversarial_samples}": roc_auc,
+        f"eval/se_roc_auc/adv{adversarial_samples}": se_roc_auc,
+        f"eval/ap_score/adv{adversarial_samples}": ap_score,
+        f"eval/num_examples/adv{adversarial_samples}": num_examples,
+        f"eval/num_positive/adv{adversarial_samples}": np.sum(y_true),
     }
 
     if save_path:
@@ -776,10 +794,12 @@ def eval(
     # Evaluation
     logger.info(f"Evaluating model ({global_step} steps)...")
     if edit_distance_mode:
-        _, eval_metrics = _evaluate_edit_distance(eval_loaders, sp, edit_distance_mode=edit_distance_mode, save_path=save_path)
+        _, eval_metrics = _evaluate_edit_distance(eval_loaders, sp, pad_id=pad_id,
+            edit_distance_mode=edit_distance_mode, save_path=save_path)
     else:
         model.eval()
-        _, eval_metrics = _evaluate(model, eval_loaders, sp, pad_id=pad_id, use_cuda=use_cuda, save_path=save_path)
+        _, eval_metrics = _evaluate(model, eval_loaders, sp, pad_id=pad_id,
+            use_cuda=use_cuda, save_path=save_path)
 
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} initial ({epoch} epochs, {global_step} steps): {value:.4f}")
