@@ -1,3 +1,4 @@
+from collections import defaultdict
 import gzip
 import json
 from pathlib import Path
@@ -182,9 +183,18 @@ def best_binary_accuracy_score(y_true, y_score, num_thresholds=100):
     return best_acc
 
 
+def se_auc(auc, n_p, n_n):
+    """Standard error of AUROC. Ported from https://rdrr.io/cran/auctestr/man/se_auc.html"""
+    D_p = (n_p - 1) * ((auc/(2 - auc)) - auc**2)
+    D_n = (n_n - 1) * ((2 * auc**2)/(1 + auc) - auc**2)
+    SE_auc = np.sqrt((auc * (1 - auc) + D_p + D_n)/(n_p * n_n))
+    return SE_auc
+
+
 @torch.no_grad()
 def _evaluate(model, loaders, sp: spm.SentencePieceProcessor, pad_id, use_cuda=True, save_path=None, similarity_reduction='adversarial'):
     model.eval()
+    assert similarity_reduction == 'adversarial'
 
     def _get_generator(data_loaders, pbar=True):
         if pbar:
@@ -221,78 +231,83 @@ def _evaluate(model, loaders, sp: spm.SentencePieceProcessor, pad_id, use_cuda=T
             yield X, lengths, labels
 
     with Timer() as t:
-        # Compute average loss
-        total_loss = 0
-        num_examples = 0
         # Compute ROC AUC, AP
-        y_true = []
-        y_scores = []
+        num_examples_by_adversarial_samples = defaultdict(lambda: 0)
+        y_true_by_adversarial_samples = defaultdict(list)
+        y_scores_by_adversarial_samples = defaultdict(list)
         generator = _get_generator(loaders, True)
+
+        def _summarize_stats(y_true, y_scores):
+            ytc = np.concatenate(y_true)
+            ysc = np.concatenate(y_scores)
+            accuracy = best_binary_accuracy_score(ytc, ysc)
+            num_pos, num_neg = np.sum(ytc), np.sum(ytc == 0)
+
+            roc_auc, se_roc_auc, ap_score = 0, 0, 0
+            if ytc.sum() != 0 and ytc.sum() < len(ytc):
+                roc_auc = roc_auc_score(ytc, ysc)
+                se_roc_auc = se_auc(roc_auc, num_pos, num_neg)
+                ap_score = average_precision_score(ytc, ysc)
+
+            return roc_auc, se_roc_auc, ap_score, accuracy, num_pos, num_neg
+
+
         for X, lengths, labels in generator:
-            y_true.append(labels.numpy())
             if use_cuda:
                 X, lengths, labels = X.cuda(), lengths.cuda(), labels.cuda()
             two_B, adversarial_samples, L = X.shape
 
             # Compute similarity
-            similarity = model(X.view(two_B*adversarial_samples, L), lengths.view(-1))  # B
+            similarity = model(X.view(two_B*adversarial_samples, L), lengths.view(-1))  # B*adversarial_samples
+            assert similarity.ndim == 1
 
-            # Reduce similarity adversarially
+            # Reduce similarity adversarially. Maximize over sliding windows so we can compute
+            # metrics for 1, 2, ... adversarial_samples samples of transforms.
             similarity = similarity.view(two_B // 2, adversarial_samples)
-            if similarity_reduction == 'adversarial':
-                min_similarity, _ = torch.min(similarity, dim=1)
-                max_similarity, _ = torch.max(similarity, dim=1)
-                similarity = min_similarity * labels + max_similarity * (1 - labels)
-            elif similarity_reduction == 'mean':
-                similarity = torch.mean(similarity, dim=1)
+            for window_size in range(1, adversarial_samples + 1):
+                for start in range(0, adversarial_samples - window_size + 1):
+                    window_similarity = similarity[:, start:start+window_size]
+                    min_similarity, _ = torch.min(window_similarity, dim=1)
+                    max_similarity, _ = torch.max(window_similarity, dim=1)
+                    window_similarity = min_similarity * labels + max_similarity * (1 - labels)
 
-            # print('sim shape', similarity.shape, 'dims', two_B, adversarial_samples, L)
-            # print('min sim shape', min_similarity.shape)
-            # print('max sim shape', max_similarity.shape)
+                    num_examples_by_adversarial_samples[window_size] += 1
+                    y_scores_by_adversarial_samples[window_size].append(window_similarity.cpu().numpy())
+                    y_true_by_adversarial_samples[window_size].append(labels.cpu().numpy())
 
-            # Compute loss
-            loss = F.binary_cross_entropy_with_logits(similarity, labels.float())
+            if num_examples_by_adversarial_samples[adversarial_samples] % 100 == 0:
+                for window_size in range(1, adversarial_samples + 1):
+                    roc_auc, se_roc_auc, ap_score, accuracy, num_pos, num_neg = _summarize_stats(
+                        y_true_by_adversarial_samples[window_size],
+                        y_scores_by_adversarial_samples[window_size])
+                    print(f"evaluate with {window_size} adversarial samples: roc_auc {roc_auc:.4f}±{se_roc_auc:.4f} (+{num_pos},-{num_neg}) ap {ap_score:.4f} acc {accuracy:.4f}")
 
-            total_loss += loss.item() * X.size(0)
-            num_examples += X.size(0)
-            avg_loss = total_loss / num_examples
+    # Compute ROC AUC and AP
+    metrics = {}
 
-            y_scores.append(similarity.cpu().numpy())
+    for window_size in range(1, adversarial_samples + 1):
+        roc_auc, se_roc_auc, ap_score, accuracy, num_pos, num_neg = _summarize_stats(
+            y_true_by_adversarial_samples[window_size],
+            y_scores_by_adversarial_samples[window_size])
 
-            if num_examples % 5 == 0:
-                ytc = np.concatenate(y_true)
-                ysc = np.concatenate(y_scores)
-                accuracy = best_binary_accuracy_score(ytc, ysc)
+        print(f"evaluate with {window_size} adversarial samples: roc_auc {roc_auc:.4f}±{se_roc_auc:.4f} (+{num_pos},-{num_neg}) ap {ap_score:.4f} acc {accuracy:.4f}")
 
-                if ytc.sum() != 0 and ytc.sum() < len(ytc):
-                    roc_auc = roc_auc_score(ytc, ysc)
-                    ap_score = average_precision_score(ytc, ysc)
-                else:
-                    roc_auc = 0
-                    ap_score = 0
-
-                print(f"evaluate average loss {avg_loss:.4f} roc_auc {roc_auc:.4f} ap {ap_score:.4f} acc {accuracy:.4f}")
-
-        # Compute ROC AUC and AP
-        y_true = np.concatenate(y_true)
-        y_scores = np.concatenate(y_scores)
-        roc_auc = roc_auc_score(y_true, y_scores)
-        ap_score = average_precision_score(y_true, y_scores)
-        accuracy = best_binary_accuracy_score(y_true, y_scores)
+        metrics.update({
+            f"eval/roc_auc_score/adv{window_size}": roc_auc,
+            f"eval/se_roc_auc/adv{window_size}": se_roc_auc,
+            f"eval/ap_score/adv{window_size}": ap_score,
+            f"eval/accuracy/adv{window_size}": accuracy,
+            f"eval/num_examples/adv{window_size}": num_examples_by_adversarial_samples[window_size],
+            f"eval/num_positive/adv{window_size}": num_pos,
+            f"eval/num_negative/adv{window_size}": num_neg,
+        })
 
     logger.debug(f"Loss calculation took {t.interval:.3f}s")
-    metrics = {
-        "eval/loss": avg_loss,
-        "eval/roc_auc_score": roc_auc,
-        "eval/ap_score": ap_score,
-        "eval/accuracy": accuracy,
-        "eval/num_examples": num_examples,
-        "eval/num_positive": np.sum(y_true),
-    }
 
     if save_path:
         logger.info("Saving labels, scores and metrics to {}", save_path)
-        torch.save({"y_true": y_true, "y_scores": y_scores, "metrics": metrics}, save_path)
+        torch.save({"y_true": dict(y_true_by_adversarial_samples), "y_scores": dict(y_scores_by_adversarial_samples),
+                    "num_examples": dict(num_examples_by_adversarial_samples), "metrics": metrics}, save_path)
 
     return (-roc_auc, metrics)
 
