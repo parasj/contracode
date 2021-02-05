@@ -70,6 +70,8 @@ class CodeEncoder(nn.Module):
     def project(self, out, h_n=None):
         assert self.config["project"]
         assert h_n is None  # second argument for compatibility with CodeEncoderLSTM
+        # NOTE: This computes a mean pool of the token representations across ALL tokens,
+        # including padding from uneven lengths in the batch.
         return self.project_layer(out.mean(dim=0))
 
 

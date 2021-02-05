@@ -112,17 +112,22 @@ class CloneModel(nn.Module):
             src_tok_ids: [2B, L] long tensor
             lengths: [2B] long tensor
         """
-        # print("CloneModel: src_tok_ids shape", src_tok_ids.shape)
-        # if lengths is not None:
-        #     print("CloneModel: lengths shape", lengths.shape)
-
         # Encode
         with torch.no_grad():
             memory, h_n = self.encoder(src_tok_ids, lengths)  # [L, 2B, D], [4, 2B, D]
             if h_n is not None:
                 rep = torch.flatten(h_n.transpose(0, 1), start_dim=1)  # [2B, 4D]
             else:
-                rep = memory.mean(dim=0)  # [2B, D]
+                # Pool features of non-padding tokens
+                non_padding_mask = src_tok_ids != self.config["pad_id"]  # [2B, L]
+                num_non_padding = non_padding_mask.sum(dim=1).unsqueeze(-1)  # [2B, 1]
+                non_padding_mask = non_padding_mask.transpose(0, 1).unsqueeze(-1)  # [L, 2B, 1]
+                # Mean pool
+                # memory = memory * non_padding_mask  # [L, 2B, D]
+                # rep = memory.sum(dim=0) / num_non_padding.float()
+                # Max pool
+                memory = memory * non_padding_mask + memory.min() * ~non_padding_mask # [L, 2B, D]
+                rep, _ = memory.max(dim=0)
 
             # Reshape to [2, B, dim]
             rep = rep.view(2, rep.size(0) // 2, rep.size(1))

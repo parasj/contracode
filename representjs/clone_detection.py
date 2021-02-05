@@ -398,6 +398,7 @@ def _evaluate_edit_distance(loaders, sp, pad_id, edit_distance_mode="tokens", sa
                 else:
                     roc_auc = 0
                     ap_score = 0
+                    se_roc_auc = 0
                 pbar.set_description(f"evaluate with {adversarial_samples} adversarial samples: avg similarity {avg_similarity:.4f} roc_auc {roc_auc:.4f}pm{se_roc_auc:.4f} ap {ap_score:.4f}")
 
         # Compute ROC AUC and AP
