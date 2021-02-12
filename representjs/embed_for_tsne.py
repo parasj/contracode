@@ -192,8 +192,10 @@ def embed_augmented(
         for X, lengths in pbar:
             rep = encoder(X.cuda(), lengths.cuda(), None)  # [B, n_layers*n_directions*d_model]
             if encoder_type == "transformer":
+                rep = rep[0]
                 assert len(rep.shape) == 3
-                rep = rep.mean(dim=0)  # rep is [T, B, dimension], so take mean across sequence
+                # rep = rep.mean(dim=0)  # rep is [T, B, dimension], so take mean across sequence
+                rep, _ = rep.max(dim=0)  # Max pool
             rep = rep.cpu().numpy()
             X = X.cpu().numpy()
             print("rep", type(rep), "X", type(X))
