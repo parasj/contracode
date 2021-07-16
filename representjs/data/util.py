@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 import time
 from subprocess import Popen, PIPE
 from loguru import logger
+from sentencepiece import SentencePieceProcessor
 
 from representjs import PACKAGE_ROOT
 
@@ -44,11 +45,21 @@ def normalize_program(fn: str):
 
 
 def EncodeAsIds(sp, alpha, prog):
-    # Encode as ids with sentencepiece
-    if alpha:
-        # using subword regularization: https://arxiv.org/pdf/1804.10959.pdf
-        # NOTE: what is the second argument here (-1)?
-        return sp.SampleEncodeAsIds(prog, -1, alpha)
+    if isinstance(sp, SentencePieceProcessor):
+        # Encode as ids with sentencepiece
+        if alpha:
+            # using subword regularization: https://arxiv.org/pdf/1804.10959.pdf
+            # NOTE: what is the second argument here (-1)?
+            return sp.SampleEncodeAsIds(prog, -1, alpha)
 
-    # using the best decoding
-    return sp.EncodeAsIds(prog)
+        # using the best decoding
+        return sp.EncodeAsIds(prog)
+    else:  # hugging face tokenizer
+        return sp.encode(prog)
+
+
+def PieceToId(sp, piece):
+    if isinstance(sp, SentencePieceProcessor):
+        return sp.PieceToId(piece)
+    else:  # hugging face tokenizer
+        return sp.convert_tokens_to_ids(piece)

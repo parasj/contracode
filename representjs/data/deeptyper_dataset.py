@@ -2,12 +2,14 @@ from typing import List
 import re
 
 import jsbeautifier
+from loguru import logger
 import sentencepiece as spm
 import torch
 from torch.nn.utils.rnn import pad_sequence
+from transformers import AutoTokenizer
 
 from representjs.data.old_dataloader import _augment_server
-from representjs.data.util import normalize_program, EncodeAsIds
+from representjs.data.util import normalize_program, EncodeAsIds, PieceToId
 
 
 TYPED_MARKER_START = "__LS__"
@@ -38,6 +40,8 @@ def _tokenize(
     assert TYPED_MARKER_START not in deeptyper_line
     assert TYPED_MARKER_MID not in deeptyper_line
     assert TYPED_MARKER_END not in deeptyper_line
+
+    start_token_idx = PieceToId(sp, "<sp>") if instanceof(sp, spm.SentencePieceProcessor) else None
 
     cap_length = max_length != -1
 
@@ -105,7 +109,7 @@ def _tokenize(
 
     # Subword tokenize, separately tokenizing each marked identifier
     js_buffer = js_beautified_norm
-    subword_ids = [sp.PieceToId("<s>")]
+    subword_ids = [start_token_idx] if start_token_idx else []
     label_segments = []
 
     last_identifier_end = 0
@@ -133,9 +137,7 @@ def _tokenize(
         if cap_length and len(subword_ids) + len(identifier_ids) + 1 > max_length:  # +1 for </s>
             break
         if label_i >= len(labels):
-            import IPython
-
-            IPython.embed()
+            logger.warning(f"Label index {label_i} out of range for labels {len(labels)}")
         # A segment is (label_id, label_start, label_end)
         label_id = target_to_id.get(labels[label_i], target_to_id["$any$"])
         label_segments.append((label_id, len(subword_ids), len(subword_ids) + len(identifier_ids)))
@@ -145,9 +147,8 @@ def _tokenize(
         last_identifier_end = end + len(TYPED_MARKER_END)
         label_i += 1
 
-    subword_ids.append(sp.PieceToId("</s>"))
-    assert subword_ids[0] == sp.PieceToId("<s>")
-    assert subword_ids[-1] == sp.PieceToId("</s>")
+    if start_token_idx:
+        subword_ids.append(start_token_idx)
 
     return js_beautified, subword_ids, label_segments
 
@@ -179,6 +180,8 @@ class DeepTyperDataset(torch.utils.data.Dataset):
         split_source_targets_by_tab=False,
         augmentations: List[dict] = None,
         program_mode="identity",
+        use_hf_data=False,
+        hf_tokenizer_name="bert-base-cased",
     ):
         self.max_length = max_length
         self.subword_regularization_alpha = subword_regularization_alpha
@@ -188,6 +191,10 @@ class DeepTyperDataset(torch.utils.data.Dataset):
 
         self.sp = spm.SentencePieceProcessor()
         self.sp.Load(sentencepiece_filepath)
+
+        self.use_hf_data = use_hf_data
+        if use_hf_data:
+            self.hf_tokenizer = AutoTokenizer.from_pretrained(hf_tokenizer_name)
 
         self.id_to_target, self.target_to_id = load_type_vocab(type_vocab_path)
 
@@ -200,7 +207,7 @@ class DeepTyperDataset(torch.utils.data.Dataset):
         line = self.lines[idx]
         _, subword_ids, label_segments = _tokenize(
             line,
-            self.sp,
+            self.sp if not self.use_hf_data else self.hf_tokenizer,
             self.id_to_target,
             self.target_to_id,
             self.max_length,

@@ -1,7 +1,9 @@
 import math
 
+from loguru import logger
 import torch
 from torch import nn
+from transformers import AutoConfig, AutoModel
 
 
 class PositionalEncoding(nn.Module):
@@ -155,4 +157,43 @@ class CodeEncoderLSTM(nn.Module):
 
         # NOTE(ajayj): comment this out and return rep to compute t-SNE representations
         return self.project_layer(rep)
-        # return rep
+
+
+class CodeEncoderHF(nn.Module):
+    def __init__(
+        self,
+        hf_model_name,
+        # n_tokens,
+        # d_model=512,
+        d_rep=256,
+        # n_encoder_layers=2,
+        # dropout=0.1,
+        pad_id=None,
+        project=False,
+    ):
+        super().__init__()
+        self.hf_encoder = AutoModel.from_pretrained(hf_model_name)
+        self.hf_config = AutoConfig.from_pretrained(hf_model_name)
+        self.d_model = self.bert_config.hidden_size
+
+        if project:
+            self.project_layer = nn.Sequential(nn.Linear(self.d_model, self.d_model), nn.ReLU(), nn.Linear(self.d_model, d_rep))
+
+    def forward(self, x, lengths=None, no_project_override=False):
+        logger.debug(f"CodeEncoderHF x.shape={x.shape}")
+        attn_mask = torch.zeros(x.size(0), x.size(1), device=x.device)
+        for i in range(x.size(0)):
+            attn_mask[i, :lengths[i]] = 1
+        hf_emb = self.hf_encoder(x, attention_mask=attn_mask, return_dict=True)['last_hidden_state']
+        logger.debug(f"CodeEncoderHF hf_emb.shape={hf_emb.shape}")
+        if not no_project_override and self.config["project"]:
+            return self.project(hf_emb, lengths=lengths)
+        return hf_emb, None
+    
+    def project(self, out, h_n=None, lengths=None):
+        assert self.config["project"]
+        assert h_n is None  # second argument for compatibility with CodeEncoderLSTM
+        means = torch.zeros(out.size(0), out.size(-1), device=out.device)
+        for b, l in zip(range(out.size(0)), lengths):
+            means[b] = out[b, :l, :].mean(dim=0)
+        return self.project_layer(means)

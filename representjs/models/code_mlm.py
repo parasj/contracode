@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from models.encoder import CodeEncoder, CodeEncoderLSTM
+from models.encoder import CodeEncoder, CodeEncoderLSTM, CodeEncoderHF
 from models.code_moco import CodeMoCo
 
 
@@ -16,8 +16,10 @@ class CodeMLM(nn.Module):
         elif encoder_type == "lstm":
             self.encoder = CodeEncoderLSTM(n_tokens=n_tokens, d_model=d_model, pad_id=pad_id, project=False, **encoder_args)
             self.head_in = 2 * d_model
-        else:
-            raise ValueError
+        elif encoder_type.startswith("hf-"):
+            hf_encoder_name = encoder_type[3:]
+            self.encoder = CodeEncoderHF(hf_encoder_name, project=False, pad_id=pad_id, **encoder_args)
+            self.head_in = d_model
 
         self.head = nn.Sequential(nn.Linear(self.head_in, d_model), nn.ReLU(), nn.LayerNorm(d_model))
 

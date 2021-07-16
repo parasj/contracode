@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import horovod.torch as hvd
 
-from models.encoder import CodeEncoder, CodeEncoderLSTM
+from models.encoder import CodeEncoder, CodeEncoderLSTM, CodeEncoderHF
 
 
 class MoCoTemplate(nn.Module):
@@ -166,6 +166,14 @@ class CodeMoCo(MoCoTemplate):
                 dropout=dropout,
                 pad_id=pad_id,
                 project=lstm_project_mode,
+            )
+        elif encoder_type.startswith("hf-"):
+            hf_encoder_name = encoder_type[3:]
+            return CodeEncoderHF(
+                hf_encoder_name,
+                d_rep=d_rep,
+                pad_id=pad_id,
+                project=False,
             )
         else:
             raise ValueError
