@@ -4,10 +4,10 @@ import random
 
 import fire
 import numpy as np
-import sentencepiece as spm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from transformers import AutoTokenizer
 import tqdm
 import wandb
 from loguru import logger
@@ -45,7 +45,7 @@ def accuracy(output, target, topk=(1,), ignore_idx=[]):
         return res, deno
 
 
-def _evaluate(model, loader, sp: spm.SentencePieceProcessor, target_to_id, use_cuda=True, no_output_attention=False):
+def _evaluate(model, loader, target_to_id, use_cuda=True, no_output_attention=False):
     model.eval()
     no_type_id = target_to_id["O"]
     any_id = target_to_id["$any$"]
@@ -127,7 +127,7 @@ def train(
     pretrain_resume_encoder_name: str = "encoder_q",  # encoder_q, encoder_k, encoder
     pretrain_resume_project: bool = False,
     no_output_attention: bool = False,
-    encoder_type: str = "transformer",
+    encoder_type: str = "hf-bert-based-cased",
     n_encoder_layers: int = 6,
     d_model: int = 512,
     # Output layer hparams
@@ -171,10 +171,10 @@ def train(
 
     if use_cuda:
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
-
-    sp = spm.SentencePieceProcessor()
-    sp.Load(spm_filepath)
-    pad_id = sp.PieceToId("[PAD]")
+    
+    assert encoder_type.startswith('hf-')
+    sp = AutoTokenizer.from_pretrained(encoder_type[2:])
+    pad_id = sp.pad_token_id
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -201,6 +201,8 @@ def train(
         subword_regularization_alpha=subword_regularization_alpha,
         augmentations=augmentations,
         program_mode=program_mode,
+        use_hf_data=True,
+        hf_tokenizer_name=encoder_type[2:],
     )
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = torch.utils.data.DataLoader(
@@ -216,6 +218,8 @@ def train(
         max_length=max_eval_seq_len,
         subword_regularization_alpha=0,
         split_source_targets_by_tab=eval_filepath.endswith(".json"),
+        use_hf_data=True,
+        hf_tokenizer_name=encoder_type[2:],
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = torch.utils.data.DataLoader(
@@ -224,7 +228,7 @@ def train(
 
     # Create model
     model = TypeTransformer(
-        n_tokens=sp.GetPieceSize(),
+        n_tokens=sp.vocab_size,
         n_output_tokens=len(id_to_target),
         pad_id=pad_id,
         encoder_type=encoder_type,
@@ -287,7 +291,7 @@ def train(
     # Evaluate initial metrics
     logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
     eval_metric, eval_metrics = _evaluate(
-        model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
+        model, eval_loader, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
     )
     for metric, value in eval_metrics.items():
         logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
@@ -344,7 +348,7 @@ def train(
         # Evaluate
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
         eval_metric, eval_metrics = _evaluate(
-            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
+            model, eval_loader, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
         )
         for metric, value in eval_metrics.items():
             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
@@ -410,9 +414,9 @@ def eval(
     if use_cuda:
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
 
-    sp = spm.SentencePieceProcessor()
-    sp.Load(spm_filepath)
-    pad_id = sp.PieceToId("[PAD]")
+    assert encoder_type.startswith('hf-')
+    sp = AutoTokenizer.from_pretrained(encoder_type[2:])
+    pad_id = sp.pad_token_id
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
     no_type_id = target_to_id["O"]
@@ -429,6 +433,8 @@ def eval(
         max_length=max_seq_len,
         subword_regularization_alpha=subword_regularization_alpha,
         split_source_targets_by_tab=eval_filepath.endswith(".json"),
+        use_hf_data=True,
+        hf_tokenizer_name=encoder_type[2:],
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = torch.utils.data.DataLoader(
@@ -437,7 +443,7 @@ def eval(
 
     # Create model
     model = TypeTransformer(
-        n_tokens=sp.GetPieceSize(),
+        n_tokens=sp.vocab_size,
         n_output_tokens=len(id_to_target),
         pad_id=pad_id,
         encoder_type=encoder_type,
@@ -462,7 +468,7 @@ def eval(
         # Evaluate metrics
         logger.info(f"Evaluating model after epoch {epoch} ({global_step} steps)...")
         _, eval_metrics = _evaluate(
-            model, eval_loader, sp, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
+            model, eval_loader, target_to_id=target_to_id, use_cuda=use_cuda, no_output_attention=no_output_attention
         )
         for metric, value in eval_metrics.items():
             logger.info(f"Evaluation {metric} after epoch {epoch} ({global_step} steps): {value:.4f}")
