@@ -174,18 +174,41 @@ class CodeEncoderHF(nn.Module):
         super().__init__()
         self.hf_encoder = AutoModel.from_pretrained(hf_model_name)
         self.hf_config = AutoConfig.from_pretrained(hf_model_name)
-        self.d_model = self.bert_config.hidden_size
+        self.d_model = self.hf_config.hidden_size
+        self.max_length = self.hf_config.max_position_embeddings
 
+        self.config = dict(project=project)
         if project:
             self.project_layer = nn.Sequential(nn.Linear(self.d_model, self.d_model), nn.ReLU(), nn.Linear(self.d_model, d_rep))
 
     def forward(self, x, lengths=None, no_project_override=False):
-        logger.debug(f"CodeEncoderHF x.shape={x.shape}")
-        attn_mask = torch.zeros(x.size(0), x.size(1), device=x.device)
+        # pad to nearest multiple
+        unpadded_length = x.size(1)
+        padded_length = math.ceil(x.size(1) / float(self.max_length)) * self.max_length
+        fold_factor = padded_length // self.max_length
+        padded_x = torch.zeros(x.size(0), padded_length, dtype=x.dtype, device=x.device)
+        padded_x[:, :x.size(1)] = x
+        x = padded_x
+        del padded_x
+
+        # make attention mask
+        attn_mask = torch.zeros_like(x).float()
         for i in range(x.size(0)):
             attn_mask[i, :lengths[i]] = 1
-        hf_emb = self.hf_encoder(x, attention_mask=attn_mask, return_dict=True)['last_hidden_state']
-        logger.debug(f"CodeEncoderHF hf_emb.shape={hf_emb.shape}")
+        
+        # unfold input
+        x = x.view(x.size(0) * fold_factor, self.max_length)
+        attn_mask = attn_mask.view(attn_mask.size(0) * fold_factor, self.max_length)
+
+        # evaluate input
+        hf_emb = self.hf_encoder(input_ids=x, attention_mask=attn_mask, return_dict=True)['last_hidden_state']
+
+        # fold input
+        hf_emb = hf_emb.view(hf_emb.size(0) // fold_factor, self.max_length * fold_factor, hf_emb.size(2))
+
+        # unpad input
+        hf_emb = hf_emb[:, :unpadded_length, :]
+
         if not no_project_override and self.config["project"]:
             return self.project(hf_emb, lengths=lengths)
         return hf_emb, None

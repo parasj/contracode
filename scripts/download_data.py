@@ -43,11 +43,11 @@ if __name__ == "__main__":
     if args.download_hf:
         cmds.extend(dl_cmds("hf_data/feather_tok/feather_tok.tar.gz", True, LOCAL_PATH))
 
+    cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", True, LOCAL_PATH))
     if not args.skip_csn:
         cmds.extend(dl_cmds("codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", False, LOCAL_PATH))
         cmds.extend(dl_cmds("codesearchnet_javascript/javascript_test_0.jsonl.gz", False, LOCAL_PATH))
         cmds.extend(dl_cmds("codesearchnet_javascript/javascript_valid_0.jsonl.gz", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", True, LOCAL_PATH))
         cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", False, LOCAL_PATH))
         cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", False, LOCAL_PATH))
         cmds.extend(dl_cmds("codesearchnet_javascript/javascript_augmented.pickle.gz", False, LOCAL_PATH))

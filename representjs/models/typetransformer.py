@@ -1,3 +1,4 @@
+from loguru import logger
 import torch
 import torch.nn as nn
 
@@ -63,8 +64,8 @@ class TypeTransformer(nn.Module):
             self.output = nn.Sequential(nn.Linear(self.encoder.d_model, self.encoder.d_model), nn.ReLU(), nn.Linear(self.encoder.d_model, n_output_tokens))
 
     def forward_hf(self, x, lengths=None, output_attention=None):
-        emb = self.encoder(x, lengths)
-        emb = emb.transpose(0, 1)  # BxLxD
+        emb, _ = self.encoder(x, lengths)
+        # emb = emb.transpose(0, 1)  # BxLxD
         if output_attention is not None:
             # Aggregate features to the starting token in each labeled identifier
             emb = torch.matmul(output_attention, emb)
@@ -78,7 +79,6 @@ class TypeTransformer(nn.Module):
             output_attention: [B, L, L] float tensor
         """
         if self.encoder_type.startswith("hf-"):
-            assert isinstance(src_tok_ids, dict)
             return self.forward_hf(src_tok_ids, lengths, output_attention)
 
         if output_attention is not None and src_tok_ids.size(0) != output_attention.size(0):

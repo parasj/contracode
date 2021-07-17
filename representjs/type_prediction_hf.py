@@ -173,7 +173,7 @@ def train(
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
     
     assert encoder_type.startswith('hf-')
-    sp = AutoTokenizer.from_pretrained(encoder_type[2:])
+    sp = AutoTokenizer.from_pretrained(encoder_type[3:])
     pad_id = sp.pad_token_id
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
@@ -202,7 +202,7 @@ def train(
         augmentations=augmentations,
         program_mode=program_mode,
         use_hf_data=True,
-        hf_tokenizer_name=encoder_type[2:],
+        hf_tokenizer_name=encoder_type[3:],
     )
     logger.info(f"Training dataset size: {len(train_dataset)}")
     train_loader = torch.utils.data.DataLoader(
@@ -219,7 +219,7 @@ def train(
         subword_regularization_alpha=0,
         split_source_targets_by_tab=eval_filepath.endswith(".json"),
         use_hf_data=True,
-        hf_tokenizer_name=encoder_type[2:],
+        hf_tokenizer_name=encoder_type[3:],
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = torch.utils.data.DataLoader(
@@ -415,7 +415,7 @@ def eval(
         assert torch.cuda.is_available(), "CUDA not available. Check env configuration, or pass --use_cuda False"
 
     assert encoder_type.startswith('hf-')
-    sp = AutoTokenizer.from_pretrained(encoder_type[2:])
+    sp = AutoTokenizer.from_pretrained(encoder_type[3:])
     pad_id = sp.pad_token_id
 
     id_to_target, target_to_id = load_type_vocab(type_vocab_filepath)
@@ -434,7 +434,7 @@ def eval(
         subword_regularization_alpha=subword_regularization_alpha,
         split_source_targets_by_tab=eval_filepath.endswith(".json"),
         use_hf_data=True,
-        hf_tokenizer_name=encoder_type[2:],
+        hf_tokenizer_name=encoder_type[3:],
     )
     logger.info(f"Eval dataset size: {len(eval_dataset)}")
     eval_loader = torch.utils.data.DataLoader(

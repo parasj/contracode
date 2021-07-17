@@ -41,7 +41,7 @@ def _tokenize(
     assert TYPED_MARKER_MID not in deeptyper_line
     assert TYPED_MARKER_END not in deeptyper_line
 
-    start_token_idx = PieceToId(sp, "<sp>") if instanceof(sp, spm.SentencePieceProcessor) else None
+    start_token_idx = PieceToId(sp, "<sp>") if isinstance(sp, spm.SentencePieceProcessor) else None
 
     cap_length = max_length != -1
 

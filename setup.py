@@ -25,7 +25,7 @@ setup(
 
         # PyTorch
         "pytorch-lightning",
-        "torch",
+        "torch>=1.9.0",
         "torchtext",
         "wandb",
 
