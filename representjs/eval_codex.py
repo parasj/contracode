@@ -73,8 +73,13 @@ class CodexAPI:
 
 def method_naming(
     api_key: str,
-    prediction_save_path: str,
+    prediction_save_path: str = None,
     engine: str = 'davinci-codex',
+    gpt_temperature: float = 0.0,
+    gpt_top_p: float = 1.0,
+    gpt_frequency_penalty: float = 0.0,
+    gpt_presence_penalty: float = 0.0,
+    gpt_max_tokens: int = 10,
     test_filepath: str = CSNJS_TEST_FILEPATH,
     spm_filepath: str = SPM_UNIGRAM_FILEPATH,
     limit_dataset_size=-1,
@@ -84,6 +89,9 @@ def method_naming(
     config = locals()
     del config['api_key']
     wandb.init(name=f"openai-{engine}", config=config, project="f1_eval", entity="ml4code")
+    if prediction_save_path is None:
+        prediction_save_path = wandb.run.dir + "/predictions.json"
+
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
 
@@ -119,7 +127,11 @@ def method_naming(
         for X, Y, Z, ZZ in pbar:
             with Timer() as t:
                 code = sp.Decode(X[0].numpy().tolist()).replace("[EOL]", "\n")
-                pred = api.get_method_names(code, engine=engine)
+                pred = api.get_method_names(
+                    code, engine=engine, temperature=gpt_temperature, top_p=gpt_top_p,
+                    frequency_penalty=gpt_frequency_penalty, presence_penalty=gpt_presence_penalty,
+                    max_tokens=gpt_max_tokens)
+                sample_generations.append(pred)
                 print("\n----------\n")
                 # print("Code:\n", "  -->  \t" + code.replace('\n', '\n  -->  '), "\n")
                 print("Pred: ", pred)
