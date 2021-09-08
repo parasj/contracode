@@ -3,14 +3,18 @@ from pathlib import Path
 import os
 
 from tqdm import tqdm
+from loguru import logger
 
-REMOTE_BASE = "https://contrastive-code.s3.amazonaws.com"  # "https://people.eecs.berkeley.edu/~paras/datasets"
+REMOTE_BASE = "https://contrastive-code.s3.amazonaws.com"
+# REMOTE_BASE = "https://people.eecs.berkeley.edu/~paras/datasets"
+REMOTE_BUCKET = "s3://contrastive-code"
 SHARED_BASE = Path("/work/paras/contracode/data").resolve()
 DEFAULT_LOCAL_BASE = str((Path(__file__).parent.parent / "data").resolve())
 
 
-def dl_cmds(dataset_path: str, extract=False, LOCAL_BASE=DEFAULT_LOCAL_BASE):
+def dl_cmds(dataset_path: str, extract=False, LOCAL_BASE=DEFAULT_LOCAL_BASE, use_awscli=False):
     remote_path = os.path.join(REMOTE_BASE, dataset_path)
+    remote_path_aws = os.path.join(REMOTE_BUCKET, dataset_path)
     cache_path = (SHARED_BASE / dataset_path).resolve()
     local_path = (Path(LOCAL_BASE) / dataset_path).resolve()
     local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -19,6 +23,8 @@ def dl_cmds(dataset_path: str, extract=False, LOCAL_BASE=DEFAULT_LOCAL_BASE):
     if not local_path.exists():
         if cache_path.exists():
             cmds.append("rsync -avhW --no-compress --progress {} {}".format(cache_path, local_path))
+        elif use_awscli:
+            cmds.append("aws s3 cp {} {}".format(remote_path_aws, local_path))
         else:
             cmds.append("wget -nc -O {} {}".format(local_path, remote_path))
         if dataset_path.endswith(".tar.gz") and extract:
@@ -31,43 +37,52 @@ def dl_cmds(dataset_path: str, extract=False, LOCAL_BASE=DEFAULT_LOCAL_BASE):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download ContraCode data")
     parser.add_argument("--path", type=str, default=DEFAULT_LOCAL_BASE, help="Path to save output to")
+    parser.add_argument("--use-awscli", action="store_true", help="Use awscli to download data")
     parser.add_argument("--skip-csn", action="store_true")
+    parser.add_argument("--skip-pretrain", action="store_true")
     parser.add_argument("--download-hf", action="store_true")  # skipped by default as it is large
     parser.add_argument("--skip-type-prediction", action="store_true")
     parser.add_argument("--skip-code-clone", action="store_true")
+    parser.add_argument("--skip-augmented", action="store_true")
     args = parser.parse_args()
 
     LOCAL_PATH = Path(args.path)
 
     cmds = []
     if args.download_hf:
-        cmds.extend(dl_cmds("hf_data/feather_tok/feather_tok.tar.gz", True, LOCAL_PATH))
+        cmds.extend(dl_cmds("hf_data/feather_tok/feather_tok.tar.gz", True, LOCAL_PATH, use_awscli=args.use_awscli))
 
     if not args.skip_csn:
-        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_test_0.jsonl.gz", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_valid_0.jsonl.gz", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", True, LOCAL_PATH))
-        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_augmented.pickle.gz", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("augmented_data/augmented_minus_compression.jsonl.gz", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("augmented_data/augmented_minus_identifier.jsonl.gz", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("augmented_data/augmented_minus_line_subsampling.jsonl.gz", False, LOCAL_PATH))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_dedupe_definitions_nonoverlap_v2_train.jsonl.gz", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_test_0.jsonl.gz", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_valid_0.jsonl.gz", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("codesearchnet_javascript/csn_unigrams_8k_9995p.tar.gz", True, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_v2_train_supervised.jsonl.gz", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_train_supervised.jsonl.gz", False, LOCAL_PATH, use_awscli=args.use_awscli))
+    
+    if not args.skip_augmented:
+        cmds.extend(dl_cmds("augmented_data/augmented_minus_compression.jsonl.gz", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("augmented_data/augmented_minus_identifier.jsonl.gz", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("augmented_data/augmented_minus_line_subsampling.jsonl.gz", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        
+    if not args.skip_pretrain:
+        cmds.extend(dl_cmds("codesearchnet_javascript/javascript_augmented.pickle.gz", False, LOCAL_PATH, use_awscli=args.use_awscli))
 
     if not args.skip_type_prediction:
-        cmds.extend(dl_cmds("type_prediction/test_projects_gold_filtered.json", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("type_prediction/target_wl", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("type_prediction/csnjs_8k_9995p_unigram_url.model", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("type_prediction/train_nounk.txt", False, LOCAL_PATH))
-        cmds.extend(dl_cmds("type_prediction/valid_nounk.txt", False, LOCAL_PATH))
+        cmds.extend(dl_cmds("type_prediction/test_projects_gold_filtered.json", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("type_prediction/target_wl", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("type_prediction/csnjs_8k_9995p_unigram_url.model", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("type_prediction/train_nounk.txt", False, LOCAL_PATH, use_awscli=args.use_awscli))
+        cmds.extend(dl_cmds("type_prediction/valid_nounk.txt", False, LOCAL_PATH, use_awscli=args.use_awscli))
 
     if not args.skip_code_clone:
-        cmds.extend(dl_cmds("codeclone/full_data.json.gz", True, LOCAL_PATH))
+        cmds.extend(dl_cmds("codeclone/full_data.json.gz", True, LOCAL_PATH, use_awscli=args.use_awscli))
 
-    cmds.extend(dl_cmds("vocab/8k_bpe/8k_bpe-vocab.txt", False, LOCAL_PATH))
+    cmds.extend(dl_cmds("vocab/8k_bpe/8k_bpe-vocab.txt", False, LOCAL_PATH, use_awscli=args.use_awscli))
 
-    print("\n".join(cmds))
+    print("Commands:")
+    for cmd in cmds:
+        print(f"\t{cmd}")
 
     t = tqdm(cmds)
     for cmd in t:
