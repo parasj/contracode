@@ -10,6 +10,7 @@ import openai
 import pandas as pd
 import sentencepiece as spm
 import tqdm
+import torch
 import wandb
 
 from data.jsonl_dataset import get_csnjs_dataset
@@ -22,6 +23,7 @@ from metrics.f1 import F1MetricMethodName
 DATA_DIR = "data/codesearchnet_javascript"
 CSNJS_TEST_FILEPATH = os.path.join(DATA_DIR, "javascript_test_0.jsonl.gz")
 SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model")
+torch.manual_seed(0)
 
 
 class CodexAPI:
