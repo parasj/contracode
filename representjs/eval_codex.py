@@ -9,7 +9,7 @@ import numpy as np
 import openai
 import pandas as pd
 import sentencepiece as spm
-import tqdm
+from tqdm import tqdm
 import torch
 import wandb
 
@@ -74,6 +74,7 @@ class CodexAPI:
 def method_naming(
     api_key: str,
     prediction_save_path: str = None,
+    prediction_save_every_n_iters: int = 16,
     engine: str = 'davinci-codex',
     gpt_temperature: float = 0.0,
     gpt_top_p: float = 1.0,
@@ -91,6 +92,7 @@ def method_naming(
     wandb.init(name=f"openai-{engine}", config=config, project="f1_eval", entity="ml4code")
     if prediction_save_path is None:
         prediction_save_path = wandb.run.dir + "/predictions.json"
+    logger.info(f"Saving predictions to {prediction_save_path}")
 
     sp = spm.SentencePieceProcessor()
     sp.Load(spm_filepath)
@@ -123,7 +125,7 @@ def method_naming(
     n_examples = 0
     precision, recall, f1 = 0.0, 0.0, 0.0
     precision_avg, recall_avg, f1_overall = 0.0, 0.0, 0.0
-    with tqdm.tqdm(test_loader, desc="test") as pbar:
+    with tqdm(test_loader, desc="test") as pbar:
         for X, Y, Z, ZZ in pbar:
             with Timer() as t:
                 code = sp.Decode(X[0].numpy().tolist()).replace("[EOL]", "\n")
@@ -132,10 +134,8 @@ def method_naming(
                     frequency_penalty=gpt_frequency_penalty, presence_penalty=gpt_presence_penalty,
                     max_tokens=gpt_max_tokens)
                 sample_generations.append(pred)
-                print("\n----------\n")
-                # print("Code:\n", "  -->  \t" + code.replace('\n', '\n  -->  '), "\n")
-                print("Pred: ", pred)
-                print("GT:   ", sp.Decode(Y[0].numpy().tolist()))
+                # tqdm.write("Code:\n", "  -->  \t" + code.replace('\n', '\n  -->  '), "\n")
+                # tqdm.write(f"{pred:16} vs {sp.Decode(Y[0].numpy().tolist()):16} (GT)")
                 sample_generations.append(dict(code=code, pred=pred, gt=sp.Decode(Y[0].numpy().tolist())))
             precision_item, score_item, f1_item = metric(pred, sp.Decode(Y[0].numpy().tolist()))
             n_examples += 1
@@ -156,17 +156,22 @@ def method_naming(
                 "f1_avg": f1 / n_examples,
                 "f1_overall": f1_overall,
             }
-            pbar.set_postfix(avg_metrics)
+            pbar.set_description(f"Current F1 = {f1_overall*100.:0.2f}%")
             wandb.log(avg_metrics, step=n_examples)
             wandb.log(item_metrics, step=n_examples)
+
+            if n_examples % prediction_save_every_n_iters == 0:
+                with open(prediction_save_path, 'w') as f:
+                    json.dump(sample_generations, f)
+                wandb.save(prediction_save_path)
+
 
     precision_avg = precision / n_examples
     recall_avg = recall / n_examples
     f1_overall = 2 * (precision_avg * recall_avg) / (precision_avg + recall_avg)
-    logger.info(f"Precision: {precision_avg:.5f}%")
-    logger.info(f"Recall: {recall_avg:.5f}%")
-    logger.info(f"F1: {f1_overall:.5f}%")
-
+    logger.info(f"Precision: {precision_avg*100:.2f}%")
+    logger.info(f"Recall: {recall_avg*100:.2f}%")
+    logger.info(f"F1: {f1_overall*100:.2f}%")
 
     with open(prediction_save_path, 'w') as f:
         json.dump(sample_generations, f)
