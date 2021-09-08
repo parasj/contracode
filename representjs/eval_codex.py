@@ -25,12 +25,12 @@ SPM_UNIGRAM_FILEPATH = os.path.join(DATA_DIR, "csnjs_8k_9995p_unigram_url.model"
 
 
 class CodexAPI:
-    def __init__(self, api_key, min_interval=.01):
+    def __init__(self, api_key, min_interval=.1):
         self.api_key = api_key
         openai.api_key = api_key
         self.last_req_time = time.time()
         self.min_interval = min_interval
-    
+
     def pause(self):
         time.sleep(max(0, self.last_req_time + self.min_interval - time.time()))
         self.last_req_time = time.time()
@@ -44,7 +44,7 @@ class CodexAPI:
             if gt:
                 prompt += " " + gt
             return prompt
-        
+
         # prompt = get_completion_block("function x(a, b) {\nreturn a + b;\n}", gt='concatenate')
         # prompt += "\n\n-------------\n\n"
         prompt = get_completion_block(code, gt=None)
