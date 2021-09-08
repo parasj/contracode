@@ -67,7 +67,8 @@ class CodexAPI:
             n=1,
             **args,
         )
-        return results['choices'][0]['text'].strip()
+        s = results['choices'][0]['text'].strip()
+        return ''.join([i for i in s if i.isalpha()])
 
 
 def method_naming(
