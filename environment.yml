@@ -1,0 +1,37 @@
+channels:
+  - conda-forge
+  - defaults
+  - pytorch
+  - nvidia
+dependencies:
+  - allennlp
+  - ca-certificates
+  - certifi
+  - cudatoolkit=11.1
+  - datasets
+  - fire
+  - loguru
+  - mamba
+  - matplotlib
+  - numpy
+  - openssl
+  - pandas
+  - pip
+  - pyarrow
+  - python=3.8
+  - pytorch-lightning
+  - pytorch=1.8.1
+  - requests
+  - sacremoses
+  - scikit-learn
+  - seaborn
+  - sentencepiece
+  - tokenizers
+  - torchaudio
+  - torchtext
+  - torchvision
+  - tqdm
+  - transformers
+  - wandb
+  - pip:
+    - jsbeautifier

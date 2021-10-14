@@ -1,7 +1,8 @@
+from loguru import logger
 import torch
 import torch.nn as nn
 
-from models.encoder import CodeEncoder, CodeEncoderLSTM
+from models.encoder import CodeEncoder, CodeEncoderLSTM, CodeEncoderHF
 
 
 class TypeTransformer(nn.Module):
@@ -28,7 +29,8 @@ class TypeTransformer(nn.Module):
         self.config = {k: v for k, v in locals().items() if k != "self"}
 
         # Encoder and output for type prediction
-        assert encoder_type in ["transformer", "lstm"]
+        assert encoder_type in ["transformer", "lstm"] or encoder_type.startswith("hf-")
+        self.encoder_type = encoder_type
         if encoder_type == "transformer":
             self.encoder = CodeEncoder(
                 n_tokens, d_model, d_rep, n_head, n_encoder_layers, d_ff, dropout, activation, norm, pad_id, project=False
@@ -56,6 +58,19 @@ class TypeTransformer(nn.Module):
                 layers.append(nn.ReLU())
             layers.append(nn.Linear(d_out_projection, n_output_tokens))
             self.output = nn.Sequential(*layers)
+        elif encoder_type.startswith("hf-"):
+            hf_encoder_name = encoder_type[3:]
+            self.encoder = CodeEncoderHF(hf_encoder_name, project=False, pad_id=pad_id, d_rep=d_rep)
+            self.output = nn.Sequential(nn.Linear(self.encoder.d_model, self.encoder.d_model), nn.ReLU(), nn.Linear(self.encoder.d_model, n_output_tokens))
+
+    def forward_hf(self, x, lengths=None, output_attention=None):
+        emb, _ = self.encoder(x, lengths)
+        # emb = emb.transpose(0, 1)  # BxLxD
+        if output_attention is not None:
+            # Aggregate features to the starting token in each labeled identifier
+            emb = torch.matmul(output_attention, emb)
+        return self.output(emb)
+
 
     def forward(self, src_tok_ids, lengths=None, output_attention=None):
         r"""
@@ -63,6 +78,9 @@ class TypeTransformer(nn.Module):
             src_tok_ids: [B, L] long tensor
             output_attention: [B, L, L] float tensor
         """
+        if self.encoder_type.startswith("hf-"):
+            return self.forward_hf(src_tok_ids, lengths, output_attention)
+
         if output_attention is not None and src_tok_ids.size(0) != output_attention.size(0):
             raise RuntimeError("the batch number of src_tok_ids and output_attention must be equal")
 

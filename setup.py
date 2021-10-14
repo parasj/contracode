@@ -25,14 +25,14 @@ setup(
 
         # PyTorch
         "pytorch-lightning",
-        "torch",
+        "torch>=1.9.0",
         "torchtext",
         "wandb",
 
         # NLP dependencies
         "sentencepiece",
         "sacremoses",
-        "transformers>=3.2.0",
+        "transformers",
         "tokenizers",
         "datasets",
         "allennlp",

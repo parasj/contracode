@@ -1,7 +1,9 @@
 import math
 
+from loguru import logger
 import torch
 from torch import nn
+from transformers import AutoConfig, AutoModel
 
 
 class PositionalEncoding(nn.Module):
@@ -155,4 +157,66 @@ class CodeEncoderLSTM(nn.Module):
 
         # NOTE(ajayj): comment this out and return rep to compute t-SNE representations
         return self.project_layer(rep)
-        # return rep
+
+
+class CodeEncoderHF(nn.Module):
+    def __init__(
+        self,
+        hf_model_name,
+        # n_tokens,
+        # d_model=512,
+        d_rep=256,
+        # n_encoder_layers=2,
+        # dropout=0.1,
+        pad_id=None,
+        project=False,
+    ):
+        super().__init__()
+        self.hf_encoder = AutoModel.from_pretrained(hf_model_name)
+        self.hf_config = AutoConfig.from_pretrained(hf_model_name)
+        self.d_model = self.hf_config.hidden_size
+        self.max_length = self.hf_config.max_position_embeddings
+
+        self.config = dict(project=project)
+        if project:
+            self.project_layer = nn.Sequential(nn.Linear(self.d_model, self.d_model), nn.ReLU(), nn.Linear(self.d_model, d_rep))
+
+    def forward(self, x, lengths=None, no_project_override=False):
+        # pad to nearest multiple
+        unpadded_length = x.size(1)
+        padded_length = math.ceil(x.size(1) / float(self.max_length)) * self.max_length
+        fold_factor = padded_length // self.max_length
+        padded_x = torch.zeros(x.size(0), padded_length, dtype=x.dtype, device=x.device)
+        padded_x[:, :x.size(1)] = x
+        x = padded_x
+        del padded_x
+
+        # make attention mask
+        attn_mask = torch.zeros_like(x).float()
+        for i in range(x.size(0)):
+            attn_mask[i, :lengths[i]] = 1
+        
+        # unfold input
+        x = x.view(x.size(0) * fold_factor, self.max_length)
+        attn_mask = attn_mask.view(attn_mask.size(0) * fold_factor, self.max_length)
+
+        # evaluate input
+        hf_emb = self.hf_encoder(input_ids=x, attention_mask=attn_mask, return_dict=True)['last_hidden_state']
+
+        # fold input
+        hf_emb = hf_emb.view(hf_emb.size(0) // fold_factor, self.max_length * fold_factor, hf_emb.size(2))
+
+        # unpad input
+        hf_emb = hf_emb[:, :unpadded_length, :]
+
+        if not no_project_override and self.config["project"]:
+            return self.project(hf_emb, lengths=lengths)
+        return hf_emb, None
+    
+    def project(self, out, h_n=None, lengths=None):
+        assert self.config["project"]
+        assert h_n is None  # second argument for compatibility with CodeEncoderLSTM
+        means = torch.zeros(out.size(0), out.size(-1), device=out.device)
+        for b, l in zip(range(out.size(0)), lengths):
+            means[b] = out[b, :l, :].mean(dim=0)
+        return self.project_layer(means)
